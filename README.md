@@ -2,7 +2,7 @@
 
 Sync Secureframe tests to GitHub issues
 
-This is experimental, but as a proof-of-concept it halfway works. PR's welcome.
+This is experimental, but appears to work. PR's welcome.
 
 ## Usage
 
