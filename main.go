@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"flag"
 	"log"
 	"strings"
 
+	"github.com/chainguard-dev/secureframe-github-sync/pkg/github"
 	"github.com/chainguard-dev/secureframe-github-sync/pkg/secureframe"
 )
 
@@ -21,12 +23,37 @@ var (
 func main() {
 	flag.Parse()
 
-	tests, err := secureframe.DashboardTests(context.Background(), strings.Split(*keysFlag, ","), *companyIDFlag, *bearerTokenFlag)
+	// TODO: Use OAuth instead of passing bearer tokens around (HELP WANTED
+
+	tests, err := secureframe.GetDashboardTests(context.Background(), *companyIDFlag, *bearerTokenFlag, strings.Split(*keysFlag, ","))
 	if err != nil {
 		log.Panicf("error: %v", err)
 	}
 
 	for x, t := range tests {
 		log.Printf("Found open test #%d: %s: %s", x, t.ID, t.Description)
+
+		t, err := secureframe.GetTest(context.Background(), *companyIDFlag, *bearerTokenFlag, t.ID)
+		if err != nil {
+			log.Panicf("error: %v", err)
+		}
+
+		if !t.Enabled {
+			log.Printf("skipping: %s", t.DisabledJustification)
+			continue
+		}
+
+		for _, r := range t.AssertionResults.Collection {
+			log.Printf("assertion: %+v", r)
+			if r.Resourceable != nil {
+				log.Printf("resourceable: %+v", r.Resourceable)
+			}
+		}
+		i, err := github.IssueFromTest(t)
+		if err != nil {
+			log.Panicf("issue: %v", err)
+		}
+
+		log.Printf("issue: %+v", i)
 	}
 }

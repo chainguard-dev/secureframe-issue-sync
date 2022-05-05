@@ -46,7 +46,7 @@ func ParseIncompleteTests(bs []byte) ([]Test, error) {
 			})
 		})
 
-		t.FailMessage = strings.Join(snippets, "\n")
+		t.Description = strings.Join(snippets, "\n")
 		ts = append(ts, t)
 	})
 

@@ -4,7 +4,7 @@ Sync Secureframe tests to GitHub issues
 
 This is experimental, but as a proof-of-concept it halfway works. PR's welcome.
 
-# Usage
+## Usage
 
 1. Visit <https://app.secureframe.com/dashboard/incomplete-tests/soc2-beta> or other dashboard page
 2. Enter your browsers "Developer Tools"
