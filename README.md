@@ -2,7 +2,13 @@
 
 Sync Secureframe tests to GitHub issues
 
-This is experimental, but appears to work. PR's welcome.
+* Opens Github issues when a test fails
+* Updates Github issues when test details change
+* Closes Github issues when a test passes or is disabled
+
+This is using an undocumented Secureframe GraphQL API, so it may suddenly break.
+
+PR's welcome.
 
 ## Usage
 
