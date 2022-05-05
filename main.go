@@ -40,7 +40,7 @@ func main() {
 	ghToken := *githubTokenFlag
 
 	if *githubTokenPathFlag != "" {
-		bs, err := ioutil.ReadFile(*githubTokenFlag)
+		bs, err := ioutil.ReadFile(*githubTokenPathFlag)
 		if err != nil {
 			log.Panicf("readfile: %v", err)
 		}
