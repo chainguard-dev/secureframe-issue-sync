@@ -12,56 +12,62 @@ import (
 
 	"github.com/chainguard-dev/secureframe-github-sync/pkg/issue"
 	"github.com/chainguard-dev/secureframe-github-sync/pkg/secureframe"
+	"github.com/danott/envflag"
 	"golang.org/x/oauth2"
 
 	"github.com/google/go-github/v44/github"
 )
 
 var (
-	githubTokenFlag = flag.String("github-token-file", "", "path to github token file")
-	dryRunFlag      = flag.Bool("dry-run", false, "dry-run mode")
-	// TODO: Replace with OAuth (help wanted)
-	bearerTokenFlag = flag.String("bearer-token", "", "secureframe bearer token")
-	keysFlag        = flag.String("report-keys", "soc2_alpha", "comma-delimited list of report keys to use")
-	companyIDFlag   = flag.String("company-id", "079b854c-c53a-4c71-bfb8-f9e87b13b6c4", "secureframe company user ID")
-	githubRepoFlag  = flag.String("github-repo", "chainguard-dev/secureframe-", "github repo to open issues against")
-	githubLabelFlag = flag.String("github-label", "soc2", "github label to apply")
-	idRE            = regexp.MustCompile(`Secureframe ID: ([\w-]+)`)
+	githubTokenPathFlag = flag.String("github-token-path", "", "path to github token file")
+	githubTokenFlag     = flag.String("github-token", "", "github token")
+	dryRunFlag          = flag.Bool("dry-run", false, "dry-run mode")
+	sfTokenFlag         = flag.String("secureframe-token", "", "Secureframe bearer token")
+	keysFlag            = flag.String("reports", "soc2_alpha", "comma-delimited list of report keys to use")
+	companyIDFlag       = flag.String("company", "079b854c-c53a-4c71-bfb8-f9e87b13b6c4", "secureframe company user ID")
+	githubRepoFlag      = flag.String("github-repo", "chainguard-dev/secureframe", "github repo to open issues against")
+	githubLabelFlag     = flag.String("github-label", "soc2", "github label to apply")
 
+	idRE    = regexp.MustCompile(`Secureframe ID: ([\w-]+)`)
 	sleepMS = 250
 )
 
 func main() {
 	flag.Parse()
-	token := ""
+	envflag.Parse()
 
-	if *githubTokenFlag != "" {
+	// Also available in the environment as GITHUB_TOKEN
+	ghToken := *githubTokenFlag
+
+	if *githubTokenPathFlag != "" {
 		bs, err := ioutil.ReadFile(*githubTokenFlag)
 		if err != nil {
 			log.Panicf("readfile: %v", err)
 		}
-		token = strings.TrimSpace(string(bs))
-	} else {
-		log.Printf("--github-token-file not provided: skipping github calls")
+		ghToken = strings.TrimSpace(string(bs))
+	}
+	if ghToken == "" {
+		log.Printf("github-token is empty: skipping github calls")
 	}
 
 	ctx := context.Background()
-	tc := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token}))
+	tc := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: ghToken}))
 	gc := github.NewClient(tc)
 
-	tests, err := secureframe.GetDashboardTests(context.Background(), *companyIDFlag, *bearerTokenFlag, strings.Split(*keysFlag, ","))
+	// NOTE: sfTokenFlag is also available in the environment as SECUREFRAME_TOKEN
+	tests, err := secureframe.GetDashboardTests(context.Background(), *companyIDFlag, *sfTokenFlag, strings.Split(*keysFlag, ","))
 	if err != nil {
 		log.Panicf("error: %v", err)
 	}
 
-	log.Printf("%d tests found", len(tests))
+	log.Printf("%d Secureframe tests found", len(tests))
 
 	parts := strings.Split(*githubRepoFlag, "/")
 	org := parts[0]
 	project := parts[1]
 
 	issues := []*github.Issue{}
-	if token != "" {
+	if ghToken != "" {
 		issues, err = issue.Synced(ctx, gc, org, project)
 		if err != nil {
 			log.Panicf("synced: %v", err)
@@ -94,11 +100,7 @@ func main() {
 	lastWasMod := false
 	updates := 0
 
-	for x, t := range tests {
-		if !strings.Contains(t.Description, "Information Security") {
-			continue
-		}
-
+	for _, t := range tests {
 		// Avoid Github API DoS attack
 		if lastWasMod && !*dryRunFlag {
 			log.Printf("Sleeping ...")
@@ -109,9 +111,9 @@ func main() {
 
 		testsByID[t.ID] = t
 
-		log.Printf("Test #%d: %s: %s (pass=%v, enabled=%v)", x, t.ID, t.Description, t.Pass, t.Enabled)
+		// log.Printf("Test #%d: %s: %s (pass=%v, enabled=%v)", x, t.ID, t.Description, t.Pass, t.Enabled)
 
-		t, err := secureframe.GetTest(context.Background(), *companyIDFlag, *bearerTokenFlag, t.ID)
+		t, err := secureframe.GetTest(context.Background(), *companyIDFlag, *sfTokenFlag, t.ID)
 		if err != nil {
 			log.Panicf("error: %v", err)
 		}
@@ -122,16 +124,15 @@ func main() {
 		}
 
 		i := issuesByID[t.ID]
-		log.Printf("%s issue found: #%d (%s)", t.ID, i.GetNumber(), i.GetState())
 
 		// Test does not exist in Github
 		if i == nil {
 			if t.Pass {
-				log.Printf("Skipping passing test: %s", t.Description)
+				// log.Printf("Skipping passing test: %s", t.Description)
 				continue
 			}
 
-			log.Printf("Creating %+v", ft)
+			log.Printf("Creating: %+v", ft)
 			if !*dryRunFlag {
 				if err := issue.Create(ctx, gc, org, project, ft); err != nil {
 					log.Panicf("create: %v", err)
@@ -144,7 +145,7 @@ func main() {
 		if i.GetState() == "open" {
 			// Close passing or disabled tests
 			if t.Pass {
-				log.Printf("Closing #%d as it is passing...", i.GetNumber())
+				log.Printf("Closing #%d (%s) as it is passing...", i.GetNumber(), i.GetTitle())
 				if !*dryRunFlag {
 					if err := issue.Close(ctx, gc, org, project, i, issue.PassingLabel); err != nil {
 						log.Panicf("close: %v", err)
@@ -155,7 +156,7 @@ func main() {
 			}
 
 			if !t.Enabled {
-				log.Printf("Closing #%d as it is disabled...", i.GetNumber())
+				log.Printf("Closing #%d (%s) as it is disabled...", i.GetNumber(), i.GetTitle())
 				if !*dryRunFlag {
 					if err := issue.Close(ctx, gc, org, project, i, issue.DisabledLabel); err != nil {
 						log.Panicf("close: %v", err)
@@ -168,7 +169,7 @@ func main() {
 
 			// Update failing tests
 			if i.GetBody() != ft.Body || i.GetTitle() != ft.Title {
-				log.Printf("Updating #%d ...", i.GetNumber())
+				log.Printf("Updating #%d with: %+v", i.GetNumber(), ft)
 				if !*dryRunFlag {
 					if err := issue.Update(ctx, gc, org, project, i.GetNumber(), ft); err != nil {
 						log.Panicf("update: %v", err)

@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.0
+	github.com/danott/envflag v0.0.0-20161011012248-14c5f9aaa227
 	github.com/google/go-github/v44 v44.0.0
 	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5
 )
