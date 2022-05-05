@@ -12,8 +12,6 @@ This is experimental, but appears to work. PR's welcome.
 4. Look for the `graphql` request that calls the `getDashboardTests` operation
 5. Click the `Headers` tab to capture the bearer token
 6. Click the `Payload` tab to capture the company ID and report keys to use.
-7. Run:
+7. Run: `go run . -bearer-token=<bearer token> --report-keys=soc2_alpha --company-id=079b854c --github-repo=somewhere/project --github-label=soc2`
 
-`go run . --dry-run --bearer-token=<bearer token> --report-keys=soc2_alpha --company-id=079b854c`
-
-The dry-run mode will indicate which issues it finds.
+NOTE: There is a `--dry-run` flag available.
