@@ -54,6 +54,8 @@ func main() {
 		log.Panicf("error: %v", err)
 	}
 
+	log.Printf("%d tests found", len(tests))
+
 	parts := strings.Split(*githubRepoFlag, "/")
 	org := parts[0]
 	project := parts[1]
@@ -67,8 +69,9 @@ func main() {
 	}
 
 	log.Printf("syncing labels ...")
+	labels := []string{issue.SyncLabel, issue.DisabledLabel, issue.PassingLabel, *githubLabelFlag}
 	if !*dryRunFlag {
-		if err := issue.SyncLabels(ctx, gc, org, project, []string{issue.SyncLabel, *githubLabelFlag}); err != nil {
+		if err := issue.SyncLabels(ctx, gc, org, project, labels); err != nil {
 			log.Panicf("sync labels: %v", err)
 		}
 	}
@@ -78,18 +81,24 @@ func main() {
 		id := ""
 		match := idRE.FindStringSubmatch(i.GetBody())
 		if len(match) > 0 {
-			log.Printf("found match: %v", match)
+			//	log.Printf("found match: %v", match)
 			id = match[1]
 			issuesByID[id] = i
 		}
-		log.Printf("issue[%s]: %+v", id, i)
+		//	log.Printf("issue[%s]: %+v", id, i)
 	}
+
+	log.Printf("%d synced issues found", len(issues))
 
 	testsByID := map[string]secureframe.Test{}
 	lastWasMod := false
 	updates := 0
 
 	for x, t := range tests {
+		if !strings.Contains(t.Description, "Information Security") {
+			continue
+		}
+
 		// Avoid Github API DoS attack
 		if lastWasMod && !*dryRunFlag {
 			log.Printf("Sleeping ...")
@@ -100,16 +109,11 @@ func main() {
 
 		testsByID[t.ID] = t
 
-		log.Printf("Found open test #%d: %s: %s", x, t.ID, t.Description)
+		log.Printf("Test #%d: %s: %s (pass=%v, enabled=%v)", x, t.ID, t.Description, t.Pass, t.Enabled)
 
 		t, err := secureframe.GetTest(context.Background(), *companyIDFlag, *bearerTokenFlag, t.ID)
 		if err != nil {
 			log.Panicf("error: %v", err)
-		}
-
-		if !t.Enabled {
-			log.Printf("skipping: %s", t.DisabledJustification)
-			continue
 		}
 
 		ft, err := issue.FromTest(t, *githubLabelFlag)
@@ -118,6 +122,7 @@ func main() {
 		}
 
 		i := issuesByID[t.ID]
+		log.Printf("%s issue found: #%d (%s)", t.ID, i.GetNumber(), i.GetState())
 
 		// Test does not exist in Github
 		if i == nil {
@@ -136,18 +141,29 @@ func main() {
 			continue
 		}
 
-		// Test is in Github, and open
-		if i.GetClosedAt().IsZero() {
+		if i.GetState() == "open" {
 			// Close passing or disabled tests
-			if t.Pass || !t.Enabled {
-				log.Printf("Closing #%d ...", i.GetNumber())
+			if t.Pass {
+				log.Printf("Closing #%d as it is passing...", i.GetNumber())
 				if !*dryRunFlag {
-					if err := issue.Close(ctx, gc, org, project, i); err != nil {
+					if err := issue.Close(ctx, gc, org, project, i, issue.PassingLabel); err != nil {
 						log.Panicf("close: %v", err)
 					}
 					lastWasMod = true
 				}
 				continue
+			}
+
+			if !t.Enabled {
+				log.Printf("Closing #%d as it is disabled...", i.GetNumber())
+				if !*dryRunFlag {
+					if err := issue.Close(ctx, gc, org, project, i, issue.DisabledLabel); err != nil {
+						log.Panicf("close: %v", err)
+					}
+					lastWasMod = true
+				}
+				continue
+
 			}
 
 			// Update failing tests
@@ -163,16 +179,17 @@ func main() {
 			continue
 		}
 
-		// Test is in Github, but closed
-		if !t.Pass {
-			log.Printf("Reopening #%d ...", i.GetNumber())
-			if !*dryRunFlag {
-				if err := issue.Update(ctx, gc, org, project, i.GetNumber(), ft); err != nil {
-					log.Panicf("update: %v", err)
+		if i.GetState() == "closed" {
+			if !t.Pass && t.Enabled {
+				log.Printf("Reopening #%d ...", i.GetNumber())
+				if !*dryRunFlag {
+					if err := issue.Update(ctx, gc, org, project, i.GetNumber(), ft); err != nil {
+						log.Panicf("update: %v", err)
+					}
+					lastWasMod = true
 				}
-				lastWasMod = true
+				continue
 			}
-			continue
 		}
 	}
 }

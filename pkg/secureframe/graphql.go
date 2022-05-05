@@ -209,12 +209,34 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 
 // GetDashboardTests accesses the SecureFrame getDashboardTests GraphQL API.
 func GetDashboardTests(ctx context.Context, companyID string, token string, reportKeys []string) ([]Test, error) {
+
+	// This seems crazy, right? There must be a better way to get all tests: passing, failing, disabled, enabled
+	enabledStates := []bool{true, false}
+	passStates := []bool{true, false}
+
+	tests := []Test{}
+
+	for _, enabled := range enabledStates {
+		for _, pass := range passStates {
+			ts, err := getDashboardTests(ctx, companyID, token, reportKeys, enabled, pass)
+			if err != nil {
+				return tests, err
+			}
+			tests = append(tests, ts...)
+		}
+	}
+
+	return tests, nil
+}
+
+func getDashboardTests(ctx context.Context, companyID string, token string, reportKeys []string, enabled bool, pass bool) ([]Test, error) {
 	in := payload{
 		OperationName: "getDashboardTests",
 		Variables: variables{
 			SearchBy: &searchBy{
 				ReportKeys: reportKeys,
-				Enabled:    true,
+				Enabled:    enabled,
+				Pass:       pass,
 			},
 			CurrentCompanyUserID: companyID,
 		},

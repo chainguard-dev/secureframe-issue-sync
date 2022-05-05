@@ -10,9 +10,12 @@ import (
 )
 
 var (
-	SyncLabel = "sframe"
-	open      = "open"
-	closed    = "closed"
+	SyncLabel     = "sframe"
+	DisabledLabel = "disabled"
+	PassingLabel  = "passing"
+
+	open   = "open"
+	closed = "closed"
 )
 
 func NewClient(c *http.Client) *github.Client {
@@ -103,14 +106,20 @@ func Update(ctx context.Context, gc *github.Client, org string, project string, 
 }
 
 // Close closes an issue
-func Close(ctx context.Context, gc *github.Client, org string, project string, i *github.Issue) error {
+func Close(ctx context.Context, gc *github.Client, org string, project string, i *github.Issue, label string) error {
 	title := i.GetTitle()
 	body := i.GetBody()
+	labels := []string{}
+	for _, l := range i.Labels {
+		labels = append(labels, l.GetName())
+	}
+	labels = append(labels, label)
 
 	ir := &github.IssueRequest{
-		Title: &title,
-		Body:  &body,
-		State: &closed,
+		Title:  &title,
+		Body:   &body,
+		State:  &closed,
+		Labels: &labels,
 	}
 	_, _, err := gc.Issues.Edit(ctx, org, project, i.GetNumber(), ir)
 	return err
