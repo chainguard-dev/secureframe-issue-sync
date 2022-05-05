@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 )
@@ -173,7 +172,7 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	log.Printf("payload: %s", payloadBytes)
+	//	log.Printf("payload: %s", payloadBytes)
 	body := bytes.NewReader(payloadBytes)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", defaultEndpoint, body)
@@ -198,13 +197,13 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	log.Printf("response: %s", rb)
+	//	log.Printf("response: %s", rb)
 
 	if err := json.Unmarshal(rb, out); err != nil {
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 
-	log.Printf("parsed response: %+v", out)
+	//	log.Printf("parsed response: %+v", out)
 	return nil
 }
 

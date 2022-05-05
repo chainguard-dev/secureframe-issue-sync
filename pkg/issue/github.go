@@ -2,6 +2,7 @@ package issue
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -9,7 +10,9 @@ import (
 )
 
 var (
-	SyncLabel = "secureframe"
+	SyncLabel = "sframe"
+	open      = "open"
+	closed    = "closed"
 )
 
 func NewClient(c *http.Client) *github.Client {
@@ -53,4 +56,62 @@ func Synced(ctx context.Context, gc *github.Client, org string, project string) 
 	}
 
 	return result, nil
+}
+
+func SyncLabels(ctx context.Context, gc *github.Client, org string, project string, labels []string) error {
+	desc := "Added by secureframe-issue-sync"
+
+	for _, l := range labels {
+		_, _, err := gc.Issues.GetLabel(ctx, org, project, l)
+		// not there?
+		if err != nil {
+			label := &github.Label{
+				Name:        &l,
+				Description: &desc,
+			}
+			_, _, err := gc.Issues.CreateLabel(ctx, org, project, label)
+			if err != nil {
+				return fmt.Errorf("create %+v: %w", label, err)
+			}
+		}
+	}
+	return nil
+}
+
+// Create creates an issue
+func Create(ctx context.Context, gc *github.Client, org string, project string, ft IssueForm) error {
+	i := &github.IssueRequest{
+		Title:  &ft.Title,
+		Body:   &ft.Body,
+		Labels: &ft.Labels,
+		State:  &open,
+	}
+	_, _, err := gc.Issues.Create(ctx, org, project, i)
+	return err
+}
+
+// Update creates an issue
+func Update(ctx context.Context, gc *github.Client, org string, project string, id int, ft IssueForm) error {
+	i := &github.IssueRequest{
+		Title:  &ft.Title,
+		Body:   &ft.Body,
+		Labels: &ft.Labels,
+		State:  &open,
+	}
+	_, _, err := gc.Issues.Edit(ctx, org, project, id, i)
+	return err
+}
+
+// Close closes an issue
+func Close(ctx context.Context, gc *github.Client, org string, project string, i *github.Issue) error {
+	title := i.GetTitle()
+	body := i.GetBody()
+
+	ir := &github.IssueRequest{
+		Title: &title,
+		Body:  &body,
+		State: &closed,
+	}
+	_, _, err := gc.Issues.Edit(ctx, org, project, i.GetNumber(), ir)
+	return err
 }

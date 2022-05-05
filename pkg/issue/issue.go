@@ -14,16 +14,17 @@ import (
 var issueTmpl string
 
 type IssueForm struct {
-	Title string
-	Body  string
-	Tags  []string
+	Title  string
+	Body   string
+	Labels []string
 }
 
-func FromTest(t secureframe.Test) (IssueForm, error) {
+func FromTest(t secureframe.Test, label string) (IssueForm, error) {
 	i := IssueForm{
-		Title: fmt.Sprintf("%s: %s", t.Key, t.Title),
-		Tags:  t.ReportKeys,
+		Title:  fmt.Sprintf("%s: %s", t.Key, t.Title),
+		Labels: []string{SyncLabel, label},
 	}
+
 	tmpl, err := template.New("issue").Funcs(template.FuncMap{
 		"Unescape":   html.UnescapeString,
 		"AssertWork": secureframe.AssertWork,
@@ -45,8 +46,4 @@ func FromTest(t secureframe.Test) (IssueForm, error) {
 
 	i.Body = tpl.String()
 	return i, nil
-}
-
-func Create(i IssueForm) error {
-	return nil
 }
