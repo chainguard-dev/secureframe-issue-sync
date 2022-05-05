@@ -1,0 +1,18 @@
+## Requirement
+
+{{.Test.Description}}
+
+## Remaining work
+
+{{ range $a := .Test.AssertionResults.Collection }}
+* {{ $a|AssertWork }}
+{{ end }}
+
+For more information, see https://app.secureframe.com/dashboard
+
+## Metadata
+
+* ID: {{.Test.ID}}
+* Key: {{.Test.Key}}
+* Evidence Type: {{ .Test.EvidenceType }}
+* Assertion Keys: {{.Test.AssertionKeys }}
