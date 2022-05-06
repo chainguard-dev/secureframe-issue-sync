@@ -28,8 +28,9 @@ var (
 	githubRepoFlag      = flag.String("github-repo", "chainguard-dev/secureframe", "github repo to open issues against")
 	githubLabelFlag     = flag.String("github-label", "soc2", "github label to apply")
 
-	idRE    = regexp.MustCompile(`Secureframe ID: ([\w-]+)`)
-	sleepMS = 250
+	idRE         = regexp.MustCompile(`Secureframe ID: ([\w-]+)`)
+	sleepMS      = 250
+	maxSleepTime = 5 * time.Second
 )
 
 func main() {
@@ -104,7 +105,12 @@ func main() {
 		// Avoid Github API DoS attack
 		if lastWasMod && !*dryRunFlag {
 			log.Printf("Sleeping ...")
-			time.Sleep(time.Duration(updates*sleepMS) * time.Millisecond)
+			sleepTime := time.Duration(updates*sleepMS) * time.Millisecond
+			if sleepTime > maxSleepTime {
+				sleepTime = maxSleepTime
+			}
+
+			time.Sleep(sleepTime)
 			updates++
 			lastWasMod = false
 		}
