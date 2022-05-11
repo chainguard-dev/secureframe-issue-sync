@@ -1,0 +1,30 @@
+name: Secureframe Issue Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  secureframe-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: clone secureframe-issue-sync
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3.0.2
+        with:
+          repository: chainguard-dev/secureframe-issue-sync
+          path: secureframe-issue-sync
+      - name: setup go
+        uses: actions/setup-go@f6164bd8c8acb4a71fb2791a8b6c4024ff038dab #v3.0.0
+        with:
+          go-version: 1.18
+          check-latest: true
+      - name: run sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SECUREFRAME_TOKEN: ${{ secrets.SECUREFRAME_TOKEN }}
+          GITHUB_REPO: chainguard-dev/sync-test
+          GITHUB_LABEL: soc2
+          COMPANY: 079b854c-c53a-4c71-bfb8-f9e87b13b6c4
+        run: go run .
+        working-directory: secureframe-issue-sync
