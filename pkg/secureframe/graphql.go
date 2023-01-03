@@ -5,7 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -26,12 +27,19 @@ type searchBy struct {
 	Pass       bool     `json:"pass"`
 }
 
+type searchKick struct {
+	Page    int    `json:"page"`
+	PerPage int    `json:"perPage"`
+	Query   string `json:"query"`
+}
+
 type variables struct {
 	// Used by DashboardTests
-	SearchBy             *searchBy `json:"searchBy,omitempty"`
-	CurrentCompanyUserID string    `json:"current_company_user_id"`
-	Page                 int       `json:"page,omitempty"`
-	Limit                int       `json:"limit,omitempty"`
+	SearchBy             *searchBy   `json:"searchBy,omitempty"`
+	SearchKick           *searchKick `json:"searchkick,omitempty"`
+	CurrentCompanyUserID string      `json:"current_company_user_id"`
+	Page                 int         `json:"page,omitempty"`
+	Limit                int         `json:"limit,omitempty"`
 
 	// Used by Test
 	TestID *string `json:"testId,omitempty"`
@@ -182,13 +190,15 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
+	log.Printf("POST'ing to %s with: \n%s", defaultEndpoint, payloadBytes)
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("do: %w", err)
 	}
 	defer resp.Body.Close()
 
-	rb, err := ioutil.ReadAll(resp.Body)
+	rb, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read: %w", err)
 	}
@@ -197,7 +207,7 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	//	log.Printf("response: %s", rb)
+	log.Printf("response: %s", rb)
 
 	if err := json.Unmarshal(rb, out); err != nil {
 		return fmt.Errorf("unmarshal: %w", err)
@@ -260,6 +270,127 @@ func getDashboardTests(ctx context.Context, companyID string, token string, repo
     __typename
   }
 }`,
+	}
+
+	out := &getDashboardTestsResponse{}
+	if err := query(ctx, token, in, out); err != nil {
+		return nil, fmt.Errorf("request: %w", err)
+	}
+
+	if len(out.Errors) > 0 {
+		return nil, fmt.Errorf("API returned errors: %+v", out.Errors)
+	}
+
+	return out.Data.GetTests.Collection, nil
+}
+
+func GetTests(ctx context.Context, companyID string, token string, reportKeys []string) ([]Test, error) {
+	in := payload{
+		OperationName: "getCompanyTestV2s",
+		Variables: variables{
+			SearchKick: &searchKick{
+				Page:    1,
+				PerPage: 50,
+				Query:   "*",
+			},
+			CurrentCompanyUserID: companyID,
+		},
+		Query: `query getCompanyTestV2s($searchkick: CompanyTestSearchkickInput) {
+			searchCompanyTests(searchkick: $searchkick) {
+			  data {
+				collection {
+				  ...CompanyTestType
+				  __typename
+				}
+				metadata {
+				  currentPage
+				  limitValue
+				  totalCount
+				  totalPages
+				  __typename
+				}
+				__typename
+			  }
+			  __typename
+			}
+		  }
+
+		  fragment CompanyTestType on CompanyTest {
+			id
+			pass
+			enabled
+			exportable
+			disabledJustification
+			discardedAt
+			passedWithUploadJustification
+			updatedAt
+			lastEvaluated
+			lastPassedAt
+			enabledFieldUpdatedById
+			enabledFieldUpdatedByUser
+			firstFailedAt
+			nextDueDate
+			owner {
+			  id
+			  name
+			  imageUrl
+			  __typename
+			}
+			testV2 {
+			  ...TestV2Type
+			  __typename
+			}
+			resourceableType
+			status
+			toleranceWindowSeconds
+			testIntervalSeconds
+			__typename
+		  }
+
+		  fragment TestV2Type on TestV2 {
+			id
+			key
+			title
+			description
+			assertionKey
+			assertionData
+			conditionKey
+			conditionData
+			reportKeys
+			testDomain
+			testFunction
+			resourceCategory
+			recommendedAction
+			detailedRemediationSteps
+			additionalInfo
+			global
+			vendor {
+			  id
+			  name
+			  __typename
+			}
+			author {
+			  id
+			  name
+			  imageUrl
+			  __typename
+			}
+			testType
+			controls {
+			  id
+			  key
+			  name
+			  description
+			  report {
+				key
+				label
+				__typename
+			  }
+			  __typename
+			}
+			__typename
+		  }
+	`,
 	}
 
 	out := &getDashboardTestsResponse{}

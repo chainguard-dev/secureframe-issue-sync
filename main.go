@@ -4,8 +4,8 @@ import (
 	"context"
 	_ "embed"
 	"flag"
-	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -41,7 +41,7 @@ func main() {
 	ghToken := *githubTokenFlag
 
 	if *githubTokenPathFlag != "" {
-		bs, err := ioutil.ReadFile(*githubTokenPathFlag)
+		bs, err := os.ReadFile(*githubTokenPathFlag)
 		if err != nil {
 			log.Panicf("readfile: %v", err)
 		}
@@ -56,12 +56,15 @@ func main() {
 	gc := github.NewClient(tc)
 
 	// NOTE: sfTokenFlag is also available in the environment as SECUREFRAME_TOKEN
-	tests, err := secureframe.GetDashboardTests(context.Background(), *companyIDFlag, *sfTokenFlag, strings.Split(*keysFlag, ","))
+	tests, err := secureframe.GetTests(context.Background(), *companyIDFlag, *sfTokenFlag, strings.Split(*keysFlag, ","))
 	if err != nil {
-		log.Panicf("error: %v", err)
+		log.Panicf("Secureframe test query failed: %v", err)
 	}
 
 	log.Printf("%d Secureframe tests found", len(tests))
+	if len(tests) == 0 {
+		os.Exit(0)
+	}
 
 	parts := strings.Split(*githubRepoFlag, "/")
 	org := parts[0]
