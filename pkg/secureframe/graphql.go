@@ -44,28 +44,25 @@ type variables struct {
 	// Used by Test
 	TestID *string `json:"testId,omitempty"`
 	Pass   bool    `json:"pass"`
+
+	Key string `json:"key"`
 }
 
 type Error struct {
 	Message string
 }
 
-type getDashboardTestsResponse struct {
-	Errors []Error               `json:"errors"`
-	Data   getDashboardTestsData `json:"data"`
+type getCompanyTestsData struct {
+	SearchCompanyTests dataCollection `json:"searchCompanyTests"`
 }
 
-type getTestResponse struct {
-	Errors []Error     `json:"errors"`
-	Data   getTestData `json:"data"`
+type dataCollection struct {
+	Data getTests `json:"data"`
 }
 
-type getDashboardTestsData struct {
-	GetTests getTests `json:"getTests"`
-}
-
-type getTestData struct {
-	GetTest Test `json:"getTest"`
+type getCompanyTestsResponse struct {
+	Errors []Error             `json:"errors"`
+	Data   getCompanyTestsData `json:"data"`
 }
 
 type getTests struct {
@@ -172,6 +169,19 @@ type Test struct {
 	AssertionResults *AssertionResults `json:"assertionResults"`
 	Title            string            `json:"title"`
 	EvidenceType     string            `json:"evidenceType"`
+
+	TestV2 TestV2 `json:"testV2"`
+}
+
+type TestV2 struct {
+	ID          string `json:"id"`
+	Key         string `json:"key"`
+	Description string `json:"description"`
+	Title       string `json:"title"`
+
+	ReportKeys []string `json:"reportKeys"`
+
+	DetailedRemediationSteps string `json:"detailedRemediationSteps"`
 }
 
 func query(ctx context.Context, token string, in interface{}, out interface{}) error {
@@ -217,80 +227,13 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 	return nil
 }
 
-// GetDashboardTests accesses the SecureFrame getDashboardTests GraphQL API.
-func GetDashboardTests(ctx context.Context, companyID string, token string, reportKeys []string) ([]Test, error) {
-
-	// This seems crazy, right? There must be a better way to get all tests: passing, failing, disabled, enabled
-	enabledStates := []bool{true, false}
-	passStates := []bool{true, false}
-
-	tests := []Test{}
-
-	for _, enabled := range enabledStates {
-		for _, pass := range passStates {
-			ts, err := getDashboardTests(ctx, companyID, token, reportKeys, enabled, pass)
-			if err != nil {
-				return tests, err
-			}
-			tests = append(tests, ts...)
-		}
-	}
-
-	return tests, nil
-}
-
-func getDashboardTests(ctx context.Context, companyID string, token string, reportKeys []string, enabled bool, pass bool) ([]Test, error) {
-	in := payload{
-		OperationName: "getDashboardTests",
-		Variables: variables{
-			SearchBy: &searchBy{
-				ReportKeys: reportKeys,
-				Enabled:    enabled,
-				Pass:       pass,
-			},
-			CurrentCompanyUserID: companyID,
-		},
-		Query: `query getDashboardTests($searchBy: TestFilterInput) {
-  getTests(searchBy: $searchBy) {
-    collection {
-      id
-      key
-      description
-      enabled
-      pass
-      disabledJustification
-      passedWithUploadJustification
-      reportKeys
-      companyTest {
-        id
-        __typename
-      }
-      __typename
-    }
-    __typename
-  }
-}`,
-	}
-
-	out := &getDashboardTestsResponse{}
-	if err := query(ctx, token, in, out); err != nil {
-		return nil, fmt.Errorf("request: %w", err)
-	}
-
-	if len(out.Errors) > 0 {
-		return nil, fmt.Errorf("API returned errors: %+v", out.Errors)
-	}
-
-	return out.Data.GetTests.Collection, nil
-}
-
 func GetTests(ctx context.Context, companyID string, token string, reportKeys []string) ([]Test, error) {
 	in := payload{
 		OperationName: "getCompanyTestV2s",
 		Variables: variables{
 			SearchKick: &searchKick{
 				Page:    1,
-				PerPage: 50,
+				PerPage: 1000,
 				Query:   "*",
 			},
 			CurrentCompanyUserID: companyID,
@@ -393,7 +336,7 @@ func GetTests(ctx context.Context, companyID string, token string, reportKeys []
 	`,
 	}
 
-	out := &getDashboardTestsResponse{}
+	out := &getCompanyTestsResponse{}
 	if err := query(ctx, token, in, out); err != nil {
 		return nil, fmt.Errorf("request: %w", err)
 	}
@@ -402,206 +345,23 @@ func GetTests(ctx context.Context, companyID string, token string, reportKeys []
 		return nil, fmt.Errorf("API returned errors: %+v", out.Errors)
 	}
 
-	return out.Data.GetTests.Collection, nil
-}
-
-// GetTest accesses the SecureFrame getTest GraphQL API.
-func GetTest(ctx context.Context, companyID string, token string, testID string) (Test, error) {
-	in := payload{
-		OperationName: "getTest",
-		Variables: variables{
-			CurrentCompanyUserID: companyID,
-			TestID:               &testID,
-			Page:                 1,
-			Limit:                50,
-			Pass:                 false,
-		},
-		Query: `
-query getTest($testId: String!, $page: Int, $limit: Int, $pass: Boolean) {
-  getTest(testId: $testId) {
-    ...TestType
-    assertionResults(page: $page, limit: $limit, pass: $pass) {
-      collection {
-        ...AssertionResultType
-        __typename
-      }
-      metadata {
-        currentPage
-        limitValue
-        totalCount
-        totalFailingAssertions(testId: $testId)
-        totalPages
-        __typename
-      }
-      __typename
-    }
-    __typename
-  }
-}
-
-fragment TestType on Test {
-  id
-  description
-  key
-  pass
-  assertionKeys
-  evidenceType
-  enabled
-  disabledJustification
-  passedWithUploadJustification
-  reportKeys
-  title
-  companyTest {
-    id
-    owner {
-      id
-      name
-      imageUrl
-      __typename
-    }
-    attachedEvidences {
-      evidence {
-        id
-        files
-        fileNode {
-          id
-          __typename
-        }
-        __typename
-      }
-      __typename
-    }
-    exportable
-    __typename
-  }
-  __typename
-}
-
-fragment AssertionResultType on AssertionResult {
-  id
-  resourceable {
-    ...FailingResourceType
-    __typename
-  }
-  failMessage
-  assertionKey
-  pass
-  data
-  createdAt
-  optional
-  enabled
-  disabledJustification
-  __typename
-}
-
-fragment FailingResourceType on Resourceable {
-  __typename
-  ... on CompanyUser {
-    id
-    companyUserName: name
-    imageUrl
-    __typename
-  }
-  ... on Policy {
-    id
-    policyName: name
-    __typename
-  }
-  ... on CloudResource {
-    id
-    owner {
-      name
-      __typename
-    }
-    vendor {
-      name
-      __typename
-    }
-    cloudResourceType
-    region
-    account
-    thirdPartyId
-    description
-    __typename
-  }
-  ... on Device {
-    id
-    deviceName
-    serialNumber
-    __typename
-  }
-  ... on Vendor {
-    id
-    vendorName: name
-    __typename
-  }
-  ... on Repository {
-    id
-    repositoryName: name
-    __typename
-  }
-  ... on CompanyUserVendor {
-    id
-    email
-    username
-    companyUser {
-      id
-      companyUserName: name
-      imageUrl
-      __typename
-    }
-    __typename
-  }
-  ... on Evidence {
-    id
-    evidenceType
-    files
-    fileNode {
-      id
-      name
-      __typename
-    }
-    __typename
-  }
-  ... on CompanyTestAcknowledgement {
-    id
-    createdAt
-    acknowledgedBy {
-      name
-      __typename
-    }
-    __typename
-  }
-  ... on PullRequest {
-    id
-    pullRequestName: name
-    __typename
-  }
-  ... on ProductionBranch {
-    id
-    productionBranchName: name
-    __typename
-  }
-  ... on CompanyControl {
-    id
-    control {
-      key
-      description
-      __typename
-    }
-    __typename
-  }
-}`}
-
-	out := &getTestResponse{}
-	if err := query(ctx, token, in, out); err != nil {
-		return Test{}, fmt.Errorf("request: %w", err)
+	needsK := map[string]bool{}
+	for _, k := range reportKeys {
+		needsK[k] = true
 	}
 
-	if len(out.Errors) > 0 {
-		return Test{}, fmt.Errorf("API returned errors: %+v", out.Errors)
+	log.Printf("API returned %d results", len(out.Data.SearchCompanyTests.Data.Collection))
+	// The API no longer appears to filter out report keys 🤷
+	tests := []Test{}
+	for _, t := range out.Data.SearchCompanyTests.Data.Collection {
+		for _, k := range t.TestV2.ReportKeys {
+			if !needsK[k] {
+				continue
+			}
+			tests = append(tests, t)
+			continue
+		}
 	}
 
-	return out.Data.GetTest, nil
-
+	return tests, nil
 }

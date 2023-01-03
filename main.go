@@ -119,14 +119,6 @@ func main() {
 		}
 
 		testsByID[t.ID] = t
-
-		// log.Printf("Test #%d: %s: %s (pass=%v, enabled=%v)", x, t.ID, t.Description, t.Pass, t.Enabled)
-
-		t, err := secureframe.GetTest(context.Background(), *companyIDFlag, *sfTokenFlag, t.ID)
-		if err != nil {
-			log.Panicf("error: %v", err)
-		}
-
 		ft, err := issue.FromTest(t, *githubLabelFlag)
 		if err != nil {
 			log.Panicf("issue: %v", err)
