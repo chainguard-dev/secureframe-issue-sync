@@ -62,9 +62,13 @@ func Synced(ctx context.Context, gc *github.Client, org string, project string) 
 }
 
 func SyncLabels(ctx context.Context, gc *github.Client, org string, project string, labels []string) error {
+	log.Printf("syncing Github labels: %s", labels)
 	desc := "Added by secureframe-issue-sync"
 
 	for _, l := range labels {
+		if l == "" {
+			continue
+		}
 		_, _, err := gc.Issues.GetLabel(ctx, org, project, l)
 		// not there?
 		if err != nil {
@@ -83,6 +87,7 @@ func SyncLabels(ctx context.Context, gc *github.Client, org string, project stri
 
 // Create creates an issue
 func Create(ctx context.Context, gc *github.Client, org string, project string, ft IssueForm) error {
+	log.Printf("creating github issue: %s", ft.Title)
 	i := &github.IssueRequest{
 		Title:  &ft.Title,
 		Body:   &ft.Body,
@@ -95,6 +100,7 @@ func Create(ctx context.Context, gc *github.Client, org string, project string, 
 
 // Update creates an issue
 func Update(ctx context.Context, gc *github.Client, org string, project string, id int, ft IssueForm) error {
+	log.Printf("updating github issue: %s", ft.Title)
 	i := &github.IssueRequest{
 		Title:  &ft.Title,
 		Body:   &ft.Body,
@@ -108,6 +114,7 @@ func Update(ctx context.Context, gc *github.Client, org string, project string, 
 // Close closes an issue
 func Close(ctx context.Context, gc *github.Client, org string, project string, i *github.Issue, label string) error {
 	title := i.GetTitle()
+	log.Printf("closing github issue: %s", title)
 	body := i.GetBody()
 	labels := []string{}
 	for _, l := range i.Labels {
