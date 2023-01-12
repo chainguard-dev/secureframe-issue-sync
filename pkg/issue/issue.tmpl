@@ -1,6 +1,23 @@
+NOTE: This issue is managed by secureframe-issue-sync, and will close automatically once the failing
+test is resolved in Secureframe. If you close this issue within Github, it will reopen itself.
+
+## Category
+
+{{ .Test.V2.TestDomain }} > {{ .Test.V2.TestFunction }} > {{ .Test.V2.ResourceCategory }}
+
 ## Requirement
 
-{{.Test.Description}}
+{{.Test.V2.Description}}
+
+Specific controls applicable to {{ .ReportKey }}:
+{{ range $c := .Test.V2.Controls }}{{ if eq $c.Report.Key $.ReportKey }}
+* {{ $c.Key }}: {{ $c.Description }}{{ end }}{{ end }}
+
+## Recommended Actions
+
+{{ .Test.V2.RecommendedAction }}
+
+{{ .Test.V2.DetailedRemediationSteps }}
 
 ## Remaining work
 
@@ -12,7 +29,7 @@ For more information, see https://app.secureframe.com/dashboard
 
 ## Metadata
 
+* Test Type: {{ .Test.V2.TestType }} {{ .Test.V2.AssertionKey }}
 * Secureframe ID: {{.Test.ID}}
-* Secureframe Key: {{.Test.Key}}
-* Evidence Type: {{ .Test.EvidenceType }}
-* Assertion Keys: {{ range .Test.AssertionKeys }}{{ . }} {{ end }}
+* Secureframe Key: {{.Test.V2.Key}}
+* Assertion Type: {{ .Test.V2.AssertionData.Type }}

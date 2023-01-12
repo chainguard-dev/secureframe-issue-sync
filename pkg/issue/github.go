@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	SyncLabel     = "sframe"
+	SyncLabel     = "secureframe"
 	DisabledLabel = "disabled"
 	PassingLabel  = "passing"
 

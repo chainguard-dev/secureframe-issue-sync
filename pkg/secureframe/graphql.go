@@ -33,6 +33,11 @@ type searchKick struct {
 	Query   string `json:"query"`
 }
 
+type report struct {
+	Key   string
+	Label string
+}
+
 type variables struct {
 	// Used by DashboardTests
 	SearchBy             *searchBy   `json:"searchBy,omitempty"`
@@ -42,8 +47,8 @@ type variables struct {
 	Limit                int         `json:"limit,omitempty"`
 
 	// Used by Test
-	TestID *string `json:"testId,omitempty"`
-	Pass   bool    `json:"pass"`
+	ID   *string `json:"id,omitempty"`
+	Pass bool    `json:"pass"`
 
 	Key string `json:"key"`
 }
@@ -63,6 +68,15 @@ type dataCollection struct {
 type getCompanyTestsResponse struct {
 	Errors []Error             `json:"errors"`
 	Data   getCompanyTestsData `json:"data"`
+}
+
+type getCompanyTestResponse struct {
+	Errors []Error            `json:"errors"`
+	Data   getCompanyTestData `json:"data"`
+}
+
+type getCompanyTestData struct {
+	Test Test `json:"getCompanyTest"`
 }
 
 type getTests struct {
@@ -165,23 +179,46 @@ type Test struct {
 	Optional                      bool     `json:"optional"`
 
 	// The following fields are only returned if getTest is called?
-	AssertionKeys    []string          `json:"assertionKeys"`
-	AssertionResults *AssertionResults `json:"assertionResults"`
-	Title            string            `json:"title"`
-	EvidenceType     string            `json:"evidenceType"`
+	AssertionKeys    []string         `json:"assertionKeys"`
+	AssertionResults AssertionResults `json:"assertionResults"`
+	Title            string           `json:"title"`
+	EvidenceType     string           `json:"evidenceType"`
 
-	TestV2 TestV2 `json:"testV2"`
+	V2 TestV2 `json:"testV2"`
+}
+
+type Control struct {
+	ID          string `json:"id"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Report      report `json:"report"`
 }
 
 type TestV2 struct {
-	ID          string `json:"id"`
-	Key         string `json:"key"`
-	Description string `json:"description"`
-	Title       string `json:"title"`
+	ID            string        `json:"id"`
+	Key           string        `json:"key"`
+	Title         string        `json:"title"`
+	Description   string        `json:"description"`
+	AssertionKey  string        `json:"assertion_key"`
+	AssertionData AssertionData `json:"assertionData"`
+	ConditionKey  string        `json:"conditionKey"`
 
 	ReportKeys []string `json:"reportKeys"`
 
+	Controls []Control `json:"controls"`
+
+	TestDomain       string `json:"testDomain"`
+	TestFunction     string `json:"testFunction"`
+	TestType         string `json:"testType"`
+	ResourceCategory string `json:"resourceCategory"`
+
 	DetailedRemediationSteps string `json:"detailedRemediationSteps"`
+	RecommendedAction        string `json:"recommendedAction"`
+
+	AssertionResults *AssertionResults `json:"assertionResults"`
+
+	Status string `json:"status"`
 }
 
 func query(ctx context.Context, token string, in interface{}, out interface{}) error {
@@ -227,7 +264,293 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 	return nil
 }
 
-func GetTests(ctx context.Context, companyID string, token string, reportKeys []string) ([]Test, error) {
+func getCompanyTest(ctx context.Context, companyID string, token string, id string) (Test, error) {
+	in := payload{
+		OperationName: "getCompanyTest",
+		Variables: variables{
+			ID:                   &id,
+			Page:                 1,
+			Limit:                50,
+			Pass:                 false,
+			CurrentCompanyUserID: companyID,
+		},
+		Query: `query getCompanyTest($id: ID!, $page: Int, $limit: Int, $pass: Boolean) {
+			getCompanyTest(id: $id) {
+			  ...CompanyTestType
+			  attachedEvidences {
+				evidence {
+				  id
+				  files
+				  fileNode {
+					id
+					discardedAt
+					__typename
+				  }
+				  __typename
+				}
+				__typename
+			  }
+			  assertionResults(page: $page, limit: $limit, pass: $pass) {
+				collection {
+				  ...AssertionResultType
+				  __typename
+				}
+				metadata {
+				  currentPage
+				  limitValue
+				  totalCount
+				  totalFailingAssertions(companyTestId: $id)
+				  totalAssertions(companyTestId: $id)
+				  totalPages
+				  __typename
+				}
+				__typename
+			  }
+			  __typename
+			}
+		  }
+
+		  fragment CompanyTestType on CompanyTest {
+			id
+			pass
+			enabled
+			exportable
+			disabledJustification
+			discardedAt
+			passedWithUploadJustification
+			updatedAt
+			lastEvaluated
+			lastPassedAt
+			enabledFieldUpdatedById
+			enabledFieldUpdatedByUser
+			firstFailedAt
+			nextDueDate
+			owner {
+			  id
+			  name
+			  imageUrl
+			  __typename
+			}
+			testV2 {
+			  ...TestV2Type
+			  __typename
+			}
+			resourceableType
+			status
+			toleranceWindowSeconds
+			testIntervalSeconds
+			__typename
+		  }
+
+		  fragment TestV2Type on TestV2 {
+			id
+			key
+			title
+			description
+			assertionKey
+			assertionData
+			conditionKey
+			conditionData
+			reportKeys
+			testDomain
+			testFunction
+			resourceCategory
+			recommendedAction
+			detailedRemediationSteps
+			additionalInfo
+			global
+			vendor {
+			  id
+			  name
+			  __typename
+			}
+			author {
+			  id
+			  name
+			  imageUrl
+			  __typename
+			}
+			testType
+			controls {
+			  id
+			  key
+			  name
+			  description
+			  report {
+				key
+				label
+				__typename
+			  }
+			  __typename
+			}
+			__typename
+		  }
+
+		  fragment AssertionResultType on AssertionResult {
+			id
+			resourceable {
+			  ...FailingResourceType
+			  __typename
+			}
+			failMessage
+			successMessage
+			assertionKey
+			pass
+			data
+			createdAt
+			optional
+			enabled
+			disabledJustification
+			__typename
+		  }
+
+		  fragment FailingResourceType on Resourceable {
+			__typename
+			... on CompanyUser {
+			  id
+			  companyUserName: name
+			  imageUrl
+			  __typename
+			}
+			... on Policy {
+			  id
+			  policyName: name
+			  __typename
+			}
+			... on CloudResource {
+			  id
+			  owner {
+				name
+				__typename
+			  }
+			  vendor {
+				name
+				__typename
+			  }
+			  cloudResourceType
+			  region
+			  account
+			  thirdPartyId
+			  description
+			  name
+			  __typename
+			}
+			... on Device {
+			  id
+			  deviceName
+			  serialNumber
+			  __typename
+			}
+			... on Vendor {
+			  id
+			  vendorName: name
+			  __typename
+			}
+			... on Repository {
+			  id
+			  repositoryName: name
+			  __typename
+			}
+			... on CompanyUserVendor {
+			  id
+			  email
+			  username
+			  companyUser {
+				id
+				companyUserName: name
+				imageUrl
+				__typename
+			  }
+			  __typename
+			}
+			... on Evidence {
+			  id
+			  evidenceType
+			  files
+			  fileNode {
+				id
+				name
+				__typename
+			  }
+			  __typename
+			}
+			... on CompanyTestAcknowledgement {
+			  id
+			  createdAt
+			  acknowledgedBy {
+				name
+				__typename
+			  }
+			  __typename
+			}
+			... on PullRequest {
+			  id
+			  pullRequestName: name
+			  __typename
+			}
+			... on ProductionBranch {
+			  id
+			  productionBranchName: name
+			  __typename
+			}
+			... on CompanyControl {
+			  id
+			  control {
+				key
+				description
+				__typename
+			  }
+			  __typename
+			}
+			... on Ticket {
+			  id
+			  title
+			  openedAt
+			  __typename
+			}
+		  }`,
+	}
+
+	out := &getCompanyTestResponse{}
+	if err := query(ctx, token, in, out); err != nil {
+		return Test{}, fmt.Errorf("request: %w", err)
+	}
+
+	if len(out.Errors) > 0 {
+		return Test{}, fmt.Errorf("API returned errors: %+v", out.Errors)
+	}
+
+	log.Printf("out.Data: %+v", out.Data.Test)
+	return out.Data.Test, nil
+}
+
+func GetTests(ctx context.Context, companyID string, token string, reportKey string) ([]Test, error) {
+	tests, err := getCompanyTestV2s(ctx, companyID, token, reportKey)
+	if err != nil {
+		return nil, fmt.Errorf("get company test v2s: %w", err)
+	}
+
+	log.Printf("got data on %d tests ... filling in", len(tests))
+	// The remaining bit of this function is a hack to fill in more information for failing tests.
+	// If we had a properly documented GraphQL API, we could get everything in a single query.
+	nts := []Test{}
+	for x, t := range tests {
+		if t.Pass || !t.Enabled {
+			nts = append(nts, t)
+			continue
+		}
+
+		log.Printf("[%d/%d] Fetching detailed data for failing test %s ...", x, len(tests), t.ID)
+		mt, err := getCompanyTest(ctx, companyID, token, t.ID)
+		if err != nil {
+			return nil, fmt.Errorf("get company test (%s): %w", t.ID, err)
+		}
+		nts = append(nts, mt)
+	}
+	return nts, nil
+}
+
+func getCompanyTestV2s(ctx context.Context, companyID string, token string, reportKey string) ([]Test, error) {
 	in := payload{
 		OperationName: "getCompanyTestV2s",
 		Variables: variables{
@@ -345,17 +668,12 @@ func GetTests(ctx context.Context, companyID string, token string, reportKeys []
 		return nil, fmt.Errorf("API returned errors: %+v", out.Errors)
 	}
 
-	needsK := map[string]bool{}
-	for _, k := range reportKeys {
-		needsK[k] = true
-	}
-
 	log.Printf("API returned %d results", len(out.Data.SearchCompanyTests.Data.Collection))
 	// The API no longer appears to filter out report keys 🤷
 	tests := []Test{}
 	for _, t := range out.Data.SearchCompanyTests.Data.Collection {
-		for _, k := range t.TestV2.ReportKeys {
-			if !needsK[k] {
+		for _, k := range t.V2.ReportKeys {
+			if k != reportKey {
 				continue
 			}
 			tests = append(tests, t)

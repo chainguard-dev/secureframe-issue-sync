@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"html"
+	"strings"
 	"text/template"
 
 	"github.com/chainguard-dev/secureframe-github-sync/pkg/secureframe"
@@ -19,10 +20,12 @@ type IssueForm struct {
 	Labels []string
 }
 
-func FromTest(t secureframe.Test, label string) (IssueForm, error) {
+func FromTest(t secureframe.Test, label string, reportKey string) (IssueForm, error) {
+	reportLabel, _, _ := strings.Cut(reportKey, "_")
+
 	i := IssueForm{
-		Title:  fmt.Sprintf("%s: %s", t.Key, t.Title),
-		Labels: []string{SyncLabel, label},
+		Title:  fmt.Sprintf("%s: %s", t.V2.Key, t.V2.Title),
+		Labels: []string{SyncLabel, label, reportLabel},
 	}
 
 	tmpl, err := template.New("issue").Funcs(template.FuncMap{
@@ -34,9 +37,11 @@ func FromTest(t secureframe.Test, label string) (IssueForm, error) {
 	}
 
 	data := struct {
-		Test secureframe.Test
+		Test      secureframe.Test
+		ReportKey string
 	}{
-		Test: t,
+		Test:      t,
+		ReportKey: reportKey,
 	}
 
 	var tpl bytes.Buffer

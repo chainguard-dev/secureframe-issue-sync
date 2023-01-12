@@ -23,10 +23,10 @@ var (
 	githubTokenFlag     = flag.String("github-token", "", "github token")
 	dryRunFlag          = flag.Bool("dry-run", false, "dry-run mode")
 	sfTokenFlag         = flag.String("secureframe-token", "", "Secureframe bearer token")
-	keysFlag            = flag.String("reports", "soc2_alpha", "comma-delimited list of report keys to use")
+	reportKeyFlag       = flag.String("report-key", "soc2_alpha", "report key to filter by")
 	companyIDFlag       = flag.String("company", "079b854c-c53a-4c71-bfb8-f9e87b13b6c4", "secureframe company user ID")
 	githubRepoFlag      = flag.String("github-repo", "chainguard-dev/secureframe", "github repo to open issues against")
-	githubLabelFlag     = flag.String("github-label", "soc2", "github label to apply")
+	githubLabelFlag     = flag.String("github-label", "", "additional github label to apply")
 
 	idRE         = regexp.MustCompile(`Secureframe ID: ([\w-]+)`)
 	sleepMS      = 250
@@ -56,7 +56,7 @@ func main() {
 	gc := github.NewClient(tc)
 
 	// NOTE: sfTokenFlag is also available in the environment as SECUREFRAME_TOKEN
-	tests, err := secureframe.GetTests(context.Background(), *companyIDFlag, *sfTokenFlag, strings.Split(*keysFlag, ","))
+	tests, err := secureframe.GetTests(context.Background(), *companyIDFlag, *sfTokenFlag, *reportKeyFlag)
 	if err != nil {
 		log.Panicf("Secureframe test query failed: %v", err)
 	}
@@ -95,7 +95,7 @@ func main() {
 			id = match[1]
 			issuesByID[id] = i
 		}
-		//	log.Printf("issue[%s]: %+v", id, i)
+		log.Printf("issue[%s]: %+v", id, i.GetTitle())
 	}
 
 	log.Printf("%d synced issues found", len(issues))
@@ -104,6 +104,12 @@ func main() {
 	lastWasMod := false
 	updates := 0
 
+	created := 0
+	reopened := 0
+	closed := 0
+	updated := 0
+
+	log.Printf("syncing %d tests ...", len(tests))
 	for _, t := range tests {
 		// Avoid Github API DoS attack
 		if lastWasMod && !*dryRunFlag {
@@ -119,7 +125,8 @@ func main() {
 		}
 
 		testsByID[t.ID] = t
-		ft, err := issue.FromTest(t, *githubLabelFlag)
+		// log.Printf("Creating issue template from test: %+v", t)
+		ft, err := issue.FromTest(t, *githubLabelFlag, *reportKeyFlag)
 		if err != nil {
 			log.Panicf("issue: %v", err)
 		}
@@ -128,12 +135,13 @@ func main() {
 
 		// Test does not exist in Github
 		if i == nil {
-			if t.Pass {
+			if t.Pass || !t.Enabled {
 				// log.Printf("Skipping passing test: %s", t.Description)
 				continue
 			}
 
 			log.Printf("Creating: %+v", ft)
+			created++
 			if !*dryRunFlag {
 				if err := issue.Create(ctx, gc, org, project, ft); err != nil {
 					log.Panicf("create: %v", err)
@@ -147,6 +155,7 @@ func main() {
 			// Close passing or disabled tests
 			if t.Pass {
 				log.Printf("Closing #%d (%s) as it is passing...", i.GetNumber(), i.GetTitle())
+				closed++
 				if !*dryRunFlag {
 					if err := issue.Close(ctx, gc, org, project, i, issue.PassingLabel); err != nil {
 						log.Panicf("close: %v", err)
@@ -158,6 +167,7 @@ func main() {
 
 			if !t.Enabled {
 				log.Printf("Closing #%d (%s) as it is disabled...", i.GetNumber(), i.GetTitle())
+				closed++
 				if !*dryRunFlag {
 					if err := issue.Close(ctx, gc, org, project, i, issue.DisabledLabel); err != nil {
 						log.Panicf("close: %v", err)
@@ -170,6 +180,7 @@ func main() {
 
 			// Update failing tests
 			if i.GetBody() != ft.Body || i.GetTitle() != ft.Title {
+				updated++
 				log.Printf("Updating #%d with: %+v", i.GetNumber(), ft)
 				if !*dryRunFlag {
 					if err := issue.Update(ctx, gc, org, project, i.GetNumber(), ft); err != nil {
@@ -182,6 +193,7 @@ func main() {
 		}
 
 		if i.GetState() == "closed" {
+			reopened++
 			if !t.Pass && t.Enabled {
 				log.Printf("Reopening #%d ...", i.GetNumber())
 				if !*dryRunFlag {
@@ -194,4 +206,8 @@ func main() {
 			}
 		}
 	}
+	log.Printf("%d issues created", created)
+	log.Printf("%d issues updated", updated)
+	log.Printf("%d issues closed", closed)
+	log.Printf("%d issues opened", reopened)
 }
