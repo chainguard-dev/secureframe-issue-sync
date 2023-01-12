@@ -15,9 +15,9 @@ Specific controls applicable to {{ .ReportKey }}:
 
 ## Recommended Actions
 
-{{ .Test.V2.RecommendedAction }}
-
-{{ .Test.V2.DetailedRemediationSteps }}
+{{ with .Test.V2.RecommendedAction}}**{{ . }}**
+{{end }}
+{{ with .Test.V2.DetailedRemediationSteps}}{{ .|Markdown }}{{ end }}
 
 ## Remaining work
 
