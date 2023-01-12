@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chainguard-dev/secureframe-github-sync/pkg/issue"
-	"github.com/chainguard-dev/secureframe-github-sync/pkg/secureframe"
+	"github.com/chainguard-dev/secureframe-issue-sync/pkg/issue"
+	"github.com/chainguard-dev/secureframe-issue-sync/pkg/secureframe"
 	"github.com/danott/envflag"
 	"golang.org/x/oauth2"
 

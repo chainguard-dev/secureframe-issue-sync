@@ -10,7 +10,7 @@ import (
 	"text/template"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
-	"github.com/chainguard-dev/secureframe-github-sync/pkg/secureframe"
+	"github.com/chainguard-dev/secureframe-issue-sync/pkg/secureframe"
 )
 
 //go:embed issue.tmpl
