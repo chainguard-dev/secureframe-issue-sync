@@ -98,31 +98,44 @@ type Resourceable struct {
 	Account           string `json:"account"`
 	CloudResourceType string `json:"cloudResourceType"`
 	Region            string `json:"region"`
+
+	ThirdPartyID string `json:"thirdPartyId"`
+	Description  string `json:"description"`
+	Name         string `json:"name"`
 }
 
 func ResourceID(r Resourceable) string {
-	switch {
-	case r.DeviceName != "":
-		return r.DeviceName
-	case r.Email != "":
-		return r.Email
-	case r.RepositoryName != "":
-		return r.RepositoryName
-	case r.CompanyUserName != "":
-		return r.CompanyUserName
-	case r.CompanyUserName != "":
-		return r.CompanyUserName
-	case r.VendorName != "":
-		return r.VendorName
-	case r.Region != "" && r.Account != "":
-		return r.Account + "/" + r.Region
-	case r.Account != "":
-		return r.Account
-	case r.Region != "":
-		return r.Region
-	default:
-		return r.ID
+	// Course to fine
+	fields := []string{
+		r.VendorName,
+		// Commented out because it's extra noise
+		// r.CloudResourceType,
+		r.Account,
+		r.Region,
+		r.CompanyUserName,
+		r.RepositoryName,
+		r.Email,
+		r.DeviceName,
+		r.Name,
+		r.Description,
+		r.ThirdPartyID,
 	}
+
+	// Remove fields that are just extra noise
+	ignored := map[string]bool{
+		"global": true,
+	}
+
+	seen := map[string]bool{}
+	unique := []string{}
+	for _, f := range fields {
+		if !seen[f] && !ignored[f] && len(f) > 1 {
+			unique = append(unique, f)
+		}
+		seen[f] = true
+	}
+
+	return strings.Join(unique, " > ")
 }
 
 func AssertWork(a AssertionResult) string {
