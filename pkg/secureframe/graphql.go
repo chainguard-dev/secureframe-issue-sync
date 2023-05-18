@@ -371,7 +371,6 @@ func getCompanyTest(ctx context.Context, companyID string, token string, id stri
 			recommendedAction
 			detailedRemediationSteps
 			additionalInfo
-			global
 			vendor {
 			  id
 			  name
@@ -642,7 +641,6 @@ func getCompanyTestV2s(ctx context.Context, companyID string, token string, repo
 			recommendedAction
 			detailedRemediationSteps
 			additionalInfo
-			global
 			vendor {
 			  id
 			  name
