@@ -16,6 +16,9 @@ import (
 //go:embed issue.tmpl
 var issueTmpl string
 
+var maxIssueBody = 32768
+var maxItemLength = 2048
+
 type IssueForm struct {
 	Title  string
 	Body   string
@@ -44,6 +47,10 @@ func assertWork(a secureframe.AssertionResult) string {
 		return work + " at " + url
 	}
 
+	if len(work) > maxItemLength {
+		work = work[0:maxItemLength] + "…"
+	}
+
 	return work
 }
 
@@ -54,6 +61,11 @@ func makeMarkdown(html string) string {
 		log.Printf("markdown conversion failed: %v", err)
 		return fmt.Sprintf("markdown conversion failed: %v\nraw html: %s", err, html)
 	}
+
+	if len(markdown) > maxItemLength {
+		markdown = markdown[0:maxItemLength] + "…"
+	}
+
 	return markdown
 }
 
@@ -92,5 +104,10 @@ func FromTest(t secureframe.Test, additionalLabel string, reportKey string) (Iss
 	}
 
 	i.Body = tpl.String()
+
+	if len(i.Body) > maxIssueBody {
+		i.Body = i.Body[0:maxIssueBody] + "…"
+	}
+
 	return i, nil
 }
