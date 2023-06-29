@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,7 +13,8 @@ import (
 )
 
 var (
-	defaultEndpoint = "https://app.secureframe.com/graphql"
+	ErrUnsupportedType = errors.New("unsupported type")
+	defaultEndpoint    = "https://app.secureframe.com/graphql"
 )
 
 type payload struct {
@@ -83,9 +85,46 @@ type getTests struct {
 	Collection []Test `json:"collection"`
 }
 
+// StringOrArray handles cases where the API can return a string or array of strings
+type StringOrArray []string
+
 type AssertionData struct {
-	Tag  string `json:"tag"`
-	Type string `json:"type"`
+	Tag  string        `json:"tag"`
+	Type StringOrArray `json:"type"`
+}
+
+func (sa *StringOrArray) String() string {
+	// my type assertion wasn't working - fix this
+	ss := []string{}
+	for _, s := range *sa {
+		ss = append(ss, s)
+	}
+	return strings.Join(ss, ", ")
+}
+
+func (sa *StringOrArray) UnmarshalJSON(data []byte) error {
+	var jsonObj interface{}
+	err := json.Unmarshal(data, &jsonObj)
+	if err != nil {
+		return err
+	}
+	switch obj := jsonObj.(type) {
+	case string:
+		*sa = StringOrArray([]string{obj})
+		return nil
+	case []interface{}:
+		s := make([]string, 0, len(obj))
+		for _, v := range obj {
+			value, ok := v.(string)
+			if !ok {
+				return ErrUnsupportedType
+			}
+			s = append(s, value)
+		}
+		*sa = StringOrArray(s)
+		return nil
+	}
+	return ErrUnsupportedType
 }
 
 type Resourceable struct {
@@ -136,31 +175,6 @@ func ResourceID(r Resourceable) string {
 	}
 
 	return strings.Join(unique, " > ")
-}
-
-func AssertWork(a AssertionResult) string {
-	work := strings.TrimSpace(a.FailMessage)
-	// TODO: Don't hardcode this
-	url := "https://app.secureframe.com/dashboard/incomplete-tests/soc2-beta"
-
-	if work == "" {
-		work = fmt.Sprintf("Upload evidence for %s", a.Data.Type)
-	}
-
-	if a.Resourceable != nil {
-		return fmt.Sprintf("%s: %s", ResourceID(*a.Resourceable), work)
-	}
-
-	if strings.HasPrefix(work, "Upload") {
-		work := strings.TrimRight(work, ".")
-		return work + " to " + url
-	}
-
-	if strings.HasPrefix(work, "Select") && strings.HasSuffix(work, "Policy") {
-		return work + " at " + url
-	}
-
-	return work
 }
 
 type AssertionResult struct {
@@ -270,7 +284,7 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 	log.Printf("response: %s", rb)
 
 	if err := json.Unmarshal(rb, out); err != nil {
-		return fmt.Errorf("unmarshal: %w", err)
+		return fmt.Errorf("unmarshal output: %w\ncontents: %s", err, rb)
 	}
 
 	//	log.Printf("parsed response: %+v", out)
@@ -283,7 +297,7 @@ func getCompanyTest(ctx context.Context, companyID string, token string, id stri
 		Variables: variables{
 			ID:                   &id,
 			Page:                 1,
-			Limit:                50,
+			Limit:                1000,
 			Pass:                 false,
 			CurrentCompanyUserID: companyID,
 		},

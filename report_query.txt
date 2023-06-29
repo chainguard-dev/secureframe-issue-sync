@@ -1,0 +1,107 @@
+{"operationName":"getReportWithTestV2s","variables":{"key":"soc2_alpha","current_company_user_id":"079b854c-c53a-4c71-bfb8-f9e87b13b6c4"},"query":"query getReportWithTestV2s($key: String!) {
+  getReport(key: $key) {
+    ...ReportWithTestV2sType
+    __typename
+  }
+}
+
+fragment ReportWithTestV2sType on Report {
+  name
+  title
+  description
+  icon
+  label
+  lastReportRun {
+    ...ReportRunType
+    __typename
+  }
+  sections {
+    ...ReportSectionWithTestV2sType
+    sections {
+      ...ReportSectionWithTestV2sType
+      sections {
+        ...ReportSectionWithTestV2sType
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+  testV2s {
+    key
+    assertionKey
+    __typename
+  }
+  __typename
+}
+
+fragment ReportRunType on ReportRun {
+  initiatedBy {
+    name
+    __typename
+  }
+  id
+  status
+  createdAt
+  reportKey
+  testKeys
+  __typename
+}
+
+fragment ReportSectionWithTestV2sType on ReportSection {
+  name
+  description
+  key
+  sectionType
+  parentSectionId
+  controls {
+    ...ControlWithTestV2sType
+    __typename
+  }
+  __typename
+}
+
+fragment ControlWithTestV2sType on Control {
+  id
+  name
+  description
+  key
+  enabled
+  disabledJustification
+  testV2s {
+    ...TestV2WithCompanyTestType
+    __typename
+  }
+  report {
+    key
+    label
+    __typename
+  }
+  __typename
+}
+
+fragment TestV2WithCompanyTestType on TestV2 {
+  id
+  key
+  title
+  description
+  assertionKey
+  companyTest {
+    id
+    owner {
+      id
+      name
+      imageUrl
+      __typename
+    }
+    pass
+    enabled
+    status
+    disabledJustification
+    passedWithUploadJustification
+    exportable
+    __typename
+  }
+  __typename
+}
+"}
