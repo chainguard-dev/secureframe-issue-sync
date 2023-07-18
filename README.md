@@ -26,6 +26,8 @@ As Secureframe does not yet have a public API, you'll need to grab the latter tw
 4. Type `sessionStorage.getItem("AUTH_TOKEN");` and press <enter>. This will show your auth token.
 5. Type `sessionStorage.getItem("CURRENT_COMPANY_USER");` and press <enter>. This will show your company ID.
 
+NOTE: Secureframe now invalidates authentication tokens every time you login. You may want to use a separate account for the authenticating this tool.
+
 ## Installation
 
 ```shell
