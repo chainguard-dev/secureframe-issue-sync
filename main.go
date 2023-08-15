@@ -195,8 +195,8 @@ func main() {
 		}
 
 		if i.GetState() == "closed" {
-			reopened++
 			if !t.Pass && t.Enabled {
+				reopened++
 				log.Printf("Reopening #%d (%s) ...", i.GetNumber(), i.GetTitle())
 				if !*dryRunFlag {
 					if err := issue.Update(ctx, gc, org, project, i.GetNumber(), ft); err != nil {
@@ -232,5 +232,5 @@ func main() {
 	log.Printf("%d issues created", created)
 	log.Printf("%d issues updated", updated)
 	log.Printf("%d issues closed", closed)
-	log.Printf("%d issues opened", reopened)
+	log.Printf("%d issues reopened", reopened)
 }
