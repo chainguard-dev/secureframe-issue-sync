@@ -13,6 +13,13 @@ Specific controls applicable to {{ .ReportKey }}:
 {{ range $c := .Test.V2.Controls }}{{ if eq $c.Report.Key $.ReportKey }}
 * {{ $c.Key }}: {{ $c.Description }}{{ end }}{{ end }}
 
+## Metadata
+
+* Test Type: {{ .Test.V2.TestType }} {{ .Test.V2.AssertionKey }}
+* Secureframe ID: {{.Test.ID}}
+* Secureframe Key: {{.Test.V2.Key}}
+* Assertion Type: {{ .Test.V2.AssertionData.Type }}
+
 ## Recommended Actions
 
 {{ with .Test.V2.RecommendedAction}}**{{ . }}**
@@ -21,15 +28,8 @@ Specific controls applicable to {{ .ReportKey }}:
 
 ## Remaining work
 
-{{ range $a := .Test.AssertionResults.Collection }}
-* {{ $a|AssertWork }}
+{{ range $i, $a := .Test.AssertionResults.Collection }}{{ if lt $i 25}}* {{ $a|AssertWork }}{{ end }}{{ if eq $i 25}}...{{ end }}
 {{ end }}
 
 For more information, see https://app.secureframe.com/dashboard
 
-## Metadata
-
-* Test Type: {{ .Test.V2.TestType }} {{ .Test.V2.AssertionKey }}
-* Secureframe ID: {{.Test.ID}}
-* Secureframe Key: {{.Test.V2.Key}}
-* Assertion Type: {{ .Test.V2.AssertionData.Type }}

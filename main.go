@@ -86,14 +86,17 @@ func main() {
 		}
 	}
 
+	// issue by test ID
 	issuesByID := map[string]*github.Issue{}
 	for _, i := range issues {
 		id := ""
 		match := idRE.FindStringSubmatch(i.GetBody())
 		if len(match) > 0 {
-			//	log.Printf("found match: %v", match)
+			// log.Printf("found match: %v", match)
 			id = match[1]
 			issuesByID[id] = i
+		} else {
+			log.Printf("no test ID found in issue[%s]: %+v", id, i.GetTitle())
 		}
 		log.Printf("issue[%s]: %+v", id, i.GetTitle())
 	}
@@ -140,7 +143,7 @@ func main() {
 				continue
 			}
 
-			log.Printf("Creating: %+v", ft)
+			log.Printf("Creating: %s", ft.Title)
 			created++
 			if !*dryRunFlag {
 				if err := issue.Create(ctx, gc, org, project, ft); err != nil {
@@ -175,13 +178,12 @@ func main() {
 					lastWasMod = true
 				}
 				continue
-
 			}
 
 			// Update failing tests
 			if i.GetBody() != ft.Body || i.GetTitle() != ft.Title {
 				updated++
-				log.Printf("Updating #%d with: %+v", i.GetNumber(), ft)
+				log.Printf("Updating #%d: %s", i.GetNumber(), ft.Title)
 				if !*dryRunFlag {
 					if err := issue.Update(ctx, gc, org, project, i.GetNumber(), ft); err != nil {
 						log.Panicf("update: %v", err)
@@ -195,7 +197,7 @@ func main() {
 		if i.GetState() == "closed" {
 			reopened++
 			if !t.Pass && t.Enabled {
-				log.Printf("Reopening #%d ...", i.GetNumber())
+				log.Printf("Reopening #%d (%s) ...", i.GetNumber(), i.GetTitle())
 				if !*dryRunFlag {
 					if err := issue.Update(ctx, gc, org, project, i.GetNumber(), ft); err != nil {
 						log.Panicf("update: %v", err)
@@ -206,6 +208,27 @@ func main() {
 			}
 		}
 	}
+
+	// Close Github issues that are no longer being tracked by Secureframe
+	for id, i := range issuesByID {
+		_, ok := testsByID[id]
+		if ok {
+			continue
+		}
+		if i.GetState() == "closed" {
+			continue
+		}
+		log.Printf("Closing #%d (%s) as it is no longer tracked by Secureframe...", i.GetNumber(), i.GetTitle())
+		closed++
+		if !*dryRunFlag {
+			if err := issue.Close(ctx, gc, org, project, i, issue.DisabledLabel); err != nil {
+				log.Panicf("close: %v", err)
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+		continue
+	}
+
 	log.Printf("%d issues created", created)
 	log.Printf("%d issues updated", updated)
 	log.Printf("%d issues closed", closed)

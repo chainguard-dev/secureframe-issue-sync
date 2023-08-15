@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 var (
@@ -264,12 +265,27 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
-	log.Printf("POST'ing to %s with: \n%s", defaultEndpoint, payloadBytes)
+	// log.Printf("POST'ing to %s with: \n%s", defaultEndpoint, payloadBytes)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("do: %w", err)
 	}
+
+	if resp.StatusCode >= 500 {
+		log.Printf("unexpected status code: %d (will retry)", resp.StatusCode)
+		time.Sleep(2 * time.Second)
+
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("do: %w", err)
+		}
+	}
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
 	defer resp.Body.Close()
 
 	rb, err := io.ReadAll(resp.Body)
@@ -277,11 +293,7 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 		return fmt.Errorf("read: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	log.Printf("response: %s", rb)
+	//log.Printf("response: %s", rb)
 
 	if err := json.Unmarshal(rb, out); err != nil {
 		return fmt.Errorf("unmarshal output: %w\ncontents: %s", err, rb)
@@ -546,11 +558,12 @@ func getCompanyTest(ctx context.Context, companyID string, token string, id stri
 		return Test{}, fmt.Errorf("API returned errors: %+v", out.Errors)
 	}
 
-	log.Printf("out.Data: %+v", out.Data.Test)
+	// log.Printf("out.Data: %+v", out.Data.Test)
 	return out.Data.Test, nil
 }
 
 func GetTests(ctx context.Context, companyID string, token string, reportKey string) ([]Test, error) {
+	log.Printf("Getting Secureframe tests for %s ...", reportKey)
 	tests, err := getCompanyTestV2s(ctx, companyID, token, reportKey)
 	if err != nil {
 		return nil, fmt.Errorf("get company test v2s: %w", err)
@@ -571,6 +584,7 @@ func GetTests(ctx context.Context, companyID string, token string, reportKey str
 		if err != nil {
 			return nil, fmt.Errorf("get company test (%s): %w", t.ID, err)
 		}
+		time.Sleep(100 * time.Millisecond)
 		nts = append(nts, mt)
 	}
 	return nts, nil
@@ -582,7 +596,7 @@ func getCompanyTestV2s(ctx context.Context, companyID string, token string, repo
 		Variables: variables{
 			SearchKick: &searchKick{
 				Page:    1,
-				PerPage: 1000,
+				PerPage: 5000,
 				Query:   "*",
 			},
 			CurrentCompanyUserID: companyID,
@@ -686,7 +700,7 @@ func getCompanyTestV2s(ctx context.Context, companyID string, token string, repo
 
 	out := &getCompanyTestsResponse{}
 	if err := query(ctx, token, in, out); err != nil {
-		return nil, fmt.Errorf("request: %w", err)
+		return nil, fmt.Errorf("query: %w", err)
 	}
 
 	if len(out.Errors) > 0 {
