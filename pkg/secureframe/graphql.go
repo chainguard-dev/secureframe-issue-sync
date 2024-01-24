@@ -270,10 +270,17 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 	if err != nil {
 		return fmt.Errorf("post: %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+
+	if !strings.Contains(token, " ") {
+		token = fmt.Sprintf("Bearer %s", token)
+	}
+
+	apiKey, _, _ := strings.Cut(token, " ")
+
+	req.Header.Set("Authorization", token)
 	req.Header.Set("Content-Type", "application/json")
 
-	// log.Printf("POST'ing to %s with: \n%s", defaultEndpoint, payloadBytes)
+	log.Printf("POST to %s with %q token: %d bytes", defaultEndpoint, apiKey, len(payloadBytes))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

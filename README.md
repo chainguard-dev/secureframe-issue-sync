@@ -26,7 +26,7 @@ As Secureframe does not yet have a public API, you'll need to grab the latter tw
 4. Type `sessionStorage.getItem("AUTH_TOKEN");` and press <enter>. This will show your auth token.
 5. Type `sessionStorage.getItem("CURRENT_COMPANY_USER");` and press <enter>. This will show your company ID.
 
-NOTE: Secureframe now invalidates authentication tokens every time you login. You may want to use a separate account for the authenticating this tool.
+NOTE: For a proper long-lived API token, see https://developer.secureframe.com/#section/Authentication - This tool understands long-lived tokens in the form of "<API KEY> <SECRET KEY>".
 
 ## Installation
 
@@ -46,12 +46,12 @@ secureframe-issue-sync --secureframe-token=<token> \
   --github-repo=chainguard-dev/xyz`
 ```
 
-There is a `--dry-run` flag available, which will pretend to make changes to GitHub instead of actually performing them.
+There is a `--dry-run` flag available, which will pretend to make changes to GitHub instead of performing them.
 
 You can also pass flags via environment variables, such as `SECUREFRAME_TOKEN=xyz`.
 
 ## Usage: GitHub Actions
 
-In production, you're going to want to schedule the sync job to run every hour or so. Since you are already on Github, why not use GitHub Actions to do it?
+In production, you're going to want to schedule the sync job to run every hour or so. Since you are already on GitHub, why not use GitHub Actions to do it?
 
 See <https://github.com/chainguard-dev/secureframe-issue-sync/blob/main/github-action.yaml> for an example.
