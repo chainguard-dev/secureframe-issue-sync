@@ -196,15 +196,14 @@ type AssertionResults struct {
 }
 
 type Test struct {
-	ID                            string   `json:"id"`
-	Key                           string   `json:"key"`
-	Description                   string   `json:"description"`
-	Enabled                       bool     `json:"enabled"`
-	Pass                          bool     `json:"pass"`
-	DisabledJustification         string   `json:"disabledJustification"`
-	PassedWithUploadJustification string   `json:"passedWithUploadJustification"`
-	ReportKeys                    []string `json:"reportKeys"`
-	Optional                      bool     `json:"optional"`
+	ID                            string `json:"id"`
+	Key                           string `json:"key"`
+	Description                   string `json:"description"`
+	Enabled                       bool   `json:"enabled"`
+	Pass                          bool   `json:"pass"`
+	DisabledJustification         string `json:"disabledJustification"`
+	PassedWithUploadJustification string `json:"passedWithUploadJustification"`
+	Optional                      bool   `json:"optional"`
 
 	// The following fields are only returned if getTest is called?
 	AssertionKeys    []string         `json:"assertionKeys"`
@@ -223,6 +222,16 @@ type Control struct {
 	Report      report `json:"report"`
 }
 
+type ControlV2 struct {
+	ID         string      `json:"id"`
+	Frameworks []Framework `json:"frameworks"`
+}
+
+type Framework struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+}
+
 type TestV2 struct {
 	ID            string        `json:"id"`
 	Key           string        `json:"key"`
@@ -232,9 +241,8 @@ type TestV2 struct {
 	AssertionData AssertionData `json:"assertionData"`
 	ConditionKey  string        `json:"conditionKey"`
 
-	ReportKeys []string `json:"reportKeys"`
-
-	Controls []Control `json:"controls"`
+	Controls   []Control   `json:"controls"`
+	ControlV2s []ControlV2 `json:"controlV2s"`
 
 	TestDomain       string `json:"testDomain"`
 	TestFunction     string `json:"testFunction"`
@@ -293,13 +301,13 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 		return fmt.Errorf("read: %w", err)
 	}
 
-	//log.Printf("response: %s", rb)
+	// log.Printf("response: %s", rb)
 
 	if err := json.Unmarshal(rb, out); err != nil {
 		return fmt.Errorf("unmarshal output: %w\ncontents: %s", err, rb)
 	}
 
-	//	log.Printf("parsed response: %+v", out)
+	// log.Printf("parsed response: %+v", out)
 	return nil
 }
 
@@ -309,7 +317,7 @@ func getCompanyTest(ctx context.Context, companyID string, token string, id stri
 		Variables: variables{
 			ID:                   &id,
 			Page:                 1,
-			Limit:                1000,
+			Limit:                3000,
 			Pass:                 false,
 			CurrentCompanyUserID: companyID,
 		},
@@ -390,7 +398,6 @@ func getCompanyTest(ctx context.Context, companyID string, token string, id stri
 			assertionData
 			conditionKey
 			conditionData
-			reportKeys
 			testDomain
 			testFunction
 			resourceCategory
@@ -579,7 +586,7 @@ func GetTests(ctx context.Context, companyID string, token string, reportKey str
 			continue
 		}
 
-		log.Printf("[%d/%d] Fetching detailed data for failing test %s ...", x, len(tests), t.ID)
+		log.Printf("[%d/%d] Fetching detailed data for failing test %s: %+v", x, len(tests), t.ID, t)
 		mt, err := getCompanyTest(ctx, companyID, token, t.ID)
 		if err != nil {
 			return nil, fmt.Errorf("get company test (%s): %w", t.ID, err)
@@ -592,7 +599,7 @@ func GetTests(ctx context.Context, companyID string, token string, reportKey str
 
 func getCompanyTestV2s(ctx context.Context, companyID string, token string, reportKey string) ([]Test, error) {
 	in := payload{
-		OperationName: "getCompanyTestV2s",
+		OperationName: "GetCompanyTestV2sQuery",
 		Variables: variables{
 			SearchKick: &searchKick{
 				Page:    1,
@@ -601,11 +608,97 @@ func getCompanyTestV2s(ctx context.Context, companyID string, token string, repo
 			},
 			CurrentCompanyUserID: companyID,
 		},
-		Query: `query getCompanyTestV2s($searchkick: CompanyTestSearchkickInput) {
+		Query: `
+		fragment GetCompanyTestV2s_TestV2Fragment on TestV2 {
+			id
+			key
+			title
+			assertionKey
+			description
+			testDomain
+			testFunction
+			resourceCategory
+			vendor {
+			  id
+			  name
+			  domain
+			  __typename
+			}
+			author {
+			  id
+			  name
+			  imageUrl
+			  __typename
+			}
+			testType
+			controlV2s {
+			  id
+			  frameworks {
+				key
+				label
+				tagLabel
+				__typename
+			  }
+			  __typename
+			}
+			__typename
+		  }
+		  
+		  fragment GetCompanyTestV2s_CompanyTestFragment on CompanyTest {
+			id
+			pass
+			enabled
+			exportable
+			corporate
+			disabledJustification
+			discardedAt
+			passedWithUploadJustification
+			updatedAt
+			lastEvaluated
+			lastPassedAt
+			enabledFieldUpdatedById
+			enabledFieldUpdatedByUser
+			firstFailedAt
+			nextDueDate
+			promoteAt
+			promoted
+			owner {
+			  id
+			  name
+			  imageUrl
+			  __typename
+			}
+			unarchivedAttachedEvidences {
+			  id
+			  __typename
+			}
+			testV2 {
+			  ...GetCompanyTestV2s_TestV2Fragment
+			  __typename
+			}
+			resourceableType
+			status
+			healthStatuses(
+			  companyFrameworkId: $companyFrameworkId
+			  workspaceId: $workspaceId
+			) {
+			  id
+			  status
+			  framework {
+				id
+				tagLabel
+				__typename
+			  }
+			  __typename
+			}
+			__typename
+		  }
+		  
+		  query GetCompanyTestV2sQuery($searchkick: CompanyTestSearchkickInput, $companyFrameworkId: ID, $workspaceId: ID) {
 			searchCompanyTests(searchkick: $searchkick) {
 			  data {
 				collection {
-				  ...CompanyTestType
+				  ...GetCompanyTestV2s_CompanyTestFragment
 				  __typename
 				}
 				metadata {
@@ -620,81 +713,6 @@ func getCompanyTestV2s(ctx context.Context, companyID string, token string, repo
 			  __typename
 			}
 		  }
-
-		  fragment CompanyTestType on CompanyTest {
-			id
-			pass
-			enabled
-			exportable
-			disabledJustification
-			discardedAt
-			passedWithUploadJustification
-			updatedAt
-			lastEvaluated
-			lastPassedAt
-			enabledFieldUpdatedById
-			enabledFieldUpdatedByUser
-			firstFailedAt
-			nextDueDate
-			owner {
-			  id
-			  name
-			  imageUrl
-			  __typename
-			}
-			testV2 {
-			  ...TestV2Type
-			  __typename
-			}
-			resourceableType
-			status
-			toleranceWindowSeconds
-			testIntervalSeconds
-			__typename
-		  }
-
-		  fragment TestV2Type on TestV2 {
-			id
-			key
-			title
-			description
-			assertionKey
-			assertionData
-			conditionKey
-			conditionData
-			reportKeys
-			testDomain
-			testFunction
-			resourceCategory
-			recommendedAction
-			detailedRemediationSteps
-			additionalInfo
-			vendor {
-			  id
-			  name
-			  __typename
-			}
-			author {
-			  id
-			  name
-			  imageUrl
-			  __typename
-			}
-			testType
-			controls {
-			  id
-			  key
-			  name
-			  description
-			  report {
-				key
-				label
-				__typename
-			  }
-			  __typename
-			}
-			__typename
-		  }
 	`,
 	}
 
@@ -708,15 +726,18 @@ func getCompanyTestV2s(ctx context.Context, companyID string, token string, repo
 	}
 
 	log.Printf("API returned %d results", len(out.Data.SearchCompanyTests.Data.Collection))
+	log.Printf("filtering out tests that match reportKey=%s", reportKey)
 	// The API no longer appears to filter out report keys 🤷
 	tests := []Test{}
 	for _, t := range out.Data.SearchCompanyTests.Data.Collection {
-		for _, k := range t.V2.ReportKeys {
-			if k != reportKey {
+		for _, c := range t.V2.ControlV2s {
+			for _, f := range c.Frameworks {
+				if f.Key != reportKey {
+					continue
+				}
+				tests = append(tests, t)
 				continue
 			}
-			tests = append(tests, t)
-			continue
 		}
 	}
 
