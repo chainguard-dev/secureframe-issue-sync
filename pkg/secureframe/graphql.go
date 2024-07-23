@@ -48,12 +48,37 @@ type variables struct {
 	CurrentCompanyUserID string      `json:"current_company_user_id"`
 	Page                 int         `json:"page,omitempty"`
 	Limit                int         `json:"limit,omitempty"`
+	Where                *where      `json:"where,omitempty"`
 
 	// Used by Test
 	ID   *string `json:"id,omitempty"`
 	Pass bool    `json:"pass"`
 
 	Key string `json:"key"`
+}
+
+type field struct {
+	Field    string `json:"field,omitempty"`
+	Operator string `json:"operator,omitempty"`
+	Visible  bool   `json:"visible,omitempty"`
+	Promoted bool   `json:"promoted,omitempty"`
+	Enabled  bool   `json:"enabled,omitempty"`
+}
+
+type rule struct {
+	Type  string `json:"type"`
+	Not   bool   `json:"not"`
+	Field field  `json:"field"`
+}
+
+type combinator struct {
+	Combinator string `json:"combinator,omitempty"`
+	Rules      []rule `json:"rules,omitempty"`
+}
+
+type where struct {
+	Type       string     `json:"type,omitempty"`
+	Combinator combinator `json:"combinator,omitempty"`
 }
 
 type Error struct {
@@ -78,12 +103,21 @@ type getCompanyTestResponse struct {
 	Data   getCompanyTestData `json:"data"`
 }
 
+type metadata struct {
+	CurrentPage int `json:"currentPage,omitempty"`
+	LimitValue  int `json:"limitValue,omitempty"`
+	TotalCount  int `json:"totalCount,omitempty"`
+	TotalPages  int `json:"totalPages,omitempty"`
+}
+
 type getCompanyTestData struct {
-	Test Test `json:"getCompanyTest"`
+	Test     Test      `json:"getCompanyTest"`
+	Metadata *metadata `json:"metadata"`
 }
 
 type getTests struct {
-	Collection []Test `json:"collection"`
+	Collection []Test    `json:"collection"`
+	Metadata   *metadata `json:"metadata"`
 }
 
 // StringOrArray handles cases where the API can return a string or array of strings
@@ -263,7 +297,10 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	//	log.Printf("payload: %s", payloadBytes)
+	x := fmt.Sprintf("%s", payloadBytes)
+	x = strings.ReplaceAll(x, "\\n", "\n")
+	x = strings.ReplaceAll(x, "\\t", `  `)
+	log.Printf("request payload:\n%s\n", x)
 	body := bytes.NewReader(payloadBytes)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", defaultEndpoint, body)
@@ -308,13 +345,13 @@ func query(ctx context.Context, token string, in interface{}, out interface{}) e
 		return fmt.Errorf("read: %w", err)
 	}
 
-	// log.Printf("response: %s", rb)
+	log.Printf("response: %s", rb)
 
 	if err := json.Unmarshal(rb, out); err != nil {
 		return fmt.Errorf("unmarshal output: %w\ncontents: %s", err, rb)
 	}
 
-	// log.Printf("parsed response: %+v", out)
+	log.Printf("parsed response: %+v", out)
 	return nil
 }
 
@@ -572,166 +609,251 @@ func getCompanyTest(ctx context.Context, companyID string, token string, id stri
 		return Test{}, fmt.Errorf("API returned errors: %+v", out.Errors)
 	}
 
-	// log.Printf("out.Data: %+v", out.Data.Test)
+	log.Printf("out.Data: %+v", out.Data.Test)
 	return out.Data.Test, nil
 }
 
 func GetTests(ctx context.Context, companyID string, token string, reportKey string) ([]Test, error) {
 	log.Printf("Getting Secureframe tests for %s ...", reportKey)
-	tests, err := getCompanyTestV2s(ctx, companyID, token, reportKey)
-	if err != nil {
-		return nil, fmt.Errorf("get company test v2s: %w", err)
+
+	page := 0
+	totalPages := 1
+	maxRequests := 50
+	requestCount := 0
+
+	found := []Test{}
+	for page < totalPages {
+		page++
+
+		// Secondary protection to avoid accidentally DoS'ing Secureframe
+		requestCount++
+		if requestCount > maxRequests {
+			return found, fmt.Errorf("made too many requests")
+		}
+
+		ts, meta, err := getCompanyTestV2s(ctx, companyID, token, reportKey, page)
+		if err != nil {
+			return nil, fmt.Errorf("get company test v2s: %w", err)
+		}
+		found = append(found, ts...)
+		//time.Sleep(time.Duration(page) * time.Second)
+
+		totalPages = meta.TotalPages
+		page = meta.CurrentPage
 	}
 
-	log.Printf("got data on %d tests ... filling in", len(tests))
+	log.Printf("got data on %d tests ... filling in", len(found))
 	// The remaining bit of this function is a hack to fill in more information for failing tests.
 	// If we had a properly documented GraphQL API, we could get everything in a single query.
-	nts := []Test{}
-	for x, t := range tests {
+	detailed := []Test{}
+
+	for x, t := range found {
+		// No need for details in these cases
 		if t.Pass || !t.Enabled {
-			nts = append(nts, t)
+			detailed = append(detailed, t)
 			continue
 		}
 
-		log.Printf("[%d/%d] Fetching detailed data for failing test %s: %+v", x, len(tests), t.ID, t)
+		log.Printf("[%d/%d] Fetching detailed data for failing test %s: %+v", x, len(found), t.ID, t)
 		mt, err := getCompanyTest(ctx, companyID, token, t.ID)
 		if err != nil {
 			return nil, fmt.Errorf("get company test (%s): %w", t.ID, err)
 		}
-		time.Sleep(100 * time.Millisecond)
-		nts = append(nts, mt)
+		time.Sleep(250 * time.Millisecond)
+		detailed = append(detailed, mt)
 	}
-	return nts, nil
+	return detailed, nil
 }
 
-func getCompanyTestV2s(ctx context.Context, companyID string, token string, reportKey string) ([]Test, error) {
+func getCompanyTestV2s(ctx context.Context, companyID string, token string, reportKey string, pageNumber int) ([]Test, *metadata, error) {
 	in := payload{
 		OperationName: "GetCompanyTestV2sQuery",
 		Variables: variables{
 			SearchKick: &searchKick{
-				Page:    1,
-				PerPage: 5000,
+				Page:    pageNumber,
+				PerPage: 100,
 				Query:   "*",
 			},
 			CurrentCompanyUserID: companyID,
+			Where: &where{
+				Type: "combinator",
+				Combinator: combinator{
+					Combinator: "and",
+					Rules: []rule{
+						rule{
+							Type: "field",
+							Not:  false,
+							Field: field{
+								Field:    "discarded_at",
+								Operator: "exists",
+							},
+						},
+						rule{
+							Type: "field",
+							Not:  false,
+							Field: field{
+								Field:    "visible",
+								Operator: "eq",
+								Visible:  true,
+							},
+						},
+						rule{
+							Type: "field",
+							Not:  false,
+							Field: field{
+								Field:    "promoted",
+								Operator: "eq",
+								Promoted: true,
+							},
+						},
+						rule{
+							Type: "field",
+							Not:  false,
+							Field: field{
+								Field:    "enabled",
+								Operator: "eq",
+								Promoted: true,
+							},
+						},
+					},
+				},
+			},
 		},
-		Query: `
-		fragment GetCompanyTestV2s_TestV2Fragment on TestV2 {
-			id
+		Query: `fragment GetCompanyTestV2s_TestV2Fragment on TestV2 {
+		id
+		key
+		title
+		assertionKey
+		description
+		testDomain
+		testFunction
+		resourceCategory
+		vendor {
+		  id
+		  name
+		  domain
+		  __typename
+		}
+		author {
+		  id
+		  name
+		  imageUrl
+		  __typename
+		}
+		testType
+		controlV2s {
+		  id
+		  frameworks {
 			key
-			title
-			assertionKey
-			description
-			testDomain
-			testFunction
-			resourceCategory
-			vendor {
-			  id
-			  name
-			  domain
-			  __typename
-			}
-			author {
-			  id
-			  name
-			  imageUrl
-			  __typename
-			}
-			testType
-			controlV2s {
-			  id
-			  frameworks {
-				key
-				label
-				tagLabel
-				__typename
-			  }
-			  __typename
-			}
+			name
+			tagLabel
 			__typename
 		  }
-		  
-		  fragment GetCompanyTestV2s_CompanyTestFragment on CompanyTest {
+		  __typename
+		}
+		__typename
+	  }
+
+	  fragment GetCompanyTestV2s_ActiveCompanyFrameworkFragment on CompanyTest {
+		activeCompanyFrameworks {
+		  id
+		  name
+		  tag
+		  __typename
+		}
+		__typename
+	  }
+
+	  fragment GetCompanyTestV2s_CompanyTestFragment on CompanyTest {
+		id
+		pass
+		enabled
+		exportable
+		corporate
+		disabledJustification
+		discardedAt
+		passedWithUploadJustification
+		updatedAt
+		lastEvaluated
+		lastPassedAt
+		enabledFieldUpdatedById
+		enabledFieldUpdatedByUser
+		firstFailedAt
+		nextDueDate
+		testIntervalSeconds
+		promoteAt
+		promoted
+		owner {
+		  id
+		  name
+		  imageUrl
+		  __typename
+		}
+		unarchivedAttachedEvidences {
+		  id
+		  __typename
+		}
+		tags
+		testV2 {
+		  ...GetCompanyTestV2s_TestV2Fragment
+		  __typename
+		}
+		status
+		healthStatuses(
+		  companyFrameworkId: $companyFrameworkId
+		  workspaceId: $workspaceId
+		) {
+		  id
+		  status
+		  framework {
 			id
-			pass
-			enabled
-			exportable
-			corporate
-			disabledJustification
-			discardedAt
-			passedWithUploadJustification
-			updatedAt
-			lastEvaluated
-			lastPassedAt
-			enabledFieldUpdatedById
-			enabledFieldUpdatedByUser
-			firstFailedAt
-			nextDueDate
-			promoteAt
-			promoted
-			owner {
-			  id
-			  name
-			  imageUrl
+			tagLabel
+			__typename
+		  }
+		  companyFramework {
+			id
+			tag
+			__typename
+		  }
+		  __typename
+		}
+		...GetCompanyTestV2s_ActiveCompanyFrameworkFragment
+		hasReviewFindings
+		__typename
+	  }
+
+	  query GetCompanyTestV2sQuery($searchkick: CompanyTestSearchkickInput, $companyFrameworkId: ID, $workspaceId: ID) {
+		searchCompanyTests(searchkick: $searchkick) {
+		  data {
+			collection {
+			  ...GetCompanyTestV2s_CompanyTestFragment
 			  __typename
 			}
-			unarchivedAttachedEvidences {
-			  id
-			  __typename
-			}
-			testV2 {
-			  ...GetCompanyTestV2s_TestV2Fragment
-			  __typename
-			}
-			resourceableType
-			status
-			healthStatuses(
-			  companyFrameworkId: $companyFrameworkId
-			  workspaceId: $workspaceId
-			) {
-			  id
-			  status
-			  framework {
-				id
-				tagLabel
-				__typename
-			  }
+			metadata {
+			  currentPage
+			  limitValue
+			  totalCount
+			  totalPages
 			  __typename
 			}
 			__typename
 		  }
-		  
-		  query GetCompanyTestV2sQuery($searchkick: CompanyTestSearchkickInput, $companyFrameworkId: ID, $workspaceId: ID) {
-			searchCompanyTests(searchkick: $searchkick) {
-			  data {
-				collection {
-				  ...GetCompanyTestV2s_CompanyTestFragment
-				  __typename
-				}
-				metadata {
-				  currentPage
-				  limitValue
-				  totalCount
-				  totalPages
-				  __typename
-				}
-				__typename
-			  }
-			  __typename
-			}
-		  }
-	`,
+		  __typename
+		}
+	  }`,
 	}
 
 	out := &getCompanyTestsResponse{}
 	if err := query(ctx, token, in, out); err != nil {
-		return nil, fmt.Errorf("query: %w", err)
+		return nil, nil, fmt.Errorf("query: %w", err)
 	}
 
 	if len(out.Errors) > 0 {
-		return nil, fmt.Errorf("API returned errors: %+v", out.Errors)
+		return nil, nil, fmt.Errorf("API returned errors: %+v", out.Errors)
 	}
 
+	meta := out.Data.SearchCompanyTests.Data.Metadata
+	log.Printf("response metadata: %+v", meta)
 	log.Printf("API returned %d results", len(out.Data.SearchCompanyTests.Data.Collection))
 	log.Printf("filtering out tests that match reportKey=%s", reportKey)
 	// The API no longer appears to filter out report keys 🤷
@@ -748,5 +870,5 @@ func getCompanyTestV2s(ctx context.Context, companyID string, token string, repo
 		}
 	}
 
-	return tests, nil
+	return tests, meta, nil
 }
